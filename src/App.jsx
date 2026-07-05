@@ -3,8 +3,10 @@ import LiveMap from "./components/LiveMap";
 import LiveFeed from "./components/LiveFeed";
 import AlertBanner from "./components/AlertBanner";
 import AddTweetModal from "./components/AddTweetModal";
+import HotspotPanel from "./components/HotspotPanel";
 import {
   fetchEvents,
+  fetchHotspots,
   createEventStream,
   startSimulation,
   stopSimulation,
@@ -24,8 +26,23 @@ export default function App() {
   const [mapOpen, setMapOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   const [sensorsActive, setSensorsActive] = useState(true);
+  const [hotspotsActive, setHotspotsActive] = useState(false);
+  const [hotspots, setHotspots] = useState([]);
   const [isPickingReportLocation, setIsPickingReportLocation] = useState(false);
   const [reportLocationCoords, setReportLocationCoords] = useState(null);
+
+  // Fetch hotspots periodically
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      fetchHotspots().then(data => {
+        if (!cancelled) setHotspots(data);
+      }).catch(console.error);
+    };
+    load();
+    const interval = setInterval(load, 15000); // 15 seconds
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [events]); // Also re-fetch if events change rapidly
 
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
@@ -84,6 +101,8 @@ export default function App() {
           selectedEvent={selectedEvent}
           isDarkMode={isDarkMode}
           sensorsActive={sensorsActive}
+          hotspotsActive={hotspotsActive}
+          hotspots={hotspots}
           locationPickActive={isPickingReportLocation}
           pickedReportLocation={reportLocationCoords}
           onReportLocationPick={(coords) => {
@@ -116,6 +135,26 @@ export default function App() {
           }
           onClose={() => setFeedOpen(false)}
           isSidebar={true}
+        />
+      )}
+
+      {/* Hotspots Panel */}
+      {mapOpen && hotspotsActive && (
+        <HotspotPanel
+          hotspots={hotspots}
+          onClose={() => setHotspotsActive(false)}
+          onSelectHotspot={(hs) => {
+            setSelectedEvent({ 
+              lat: hs.lat, 
+              lng: hs.lng, 
+              locationName: hs.locationName,
+              severity: hs.severity,
+              pollutionType: hs.dominantType,
+              text: `Hotspot Center: ${hs.eventCount} nearby reports.`,
+              timestamp: new Date().toISOString(),
+              _t: Date.now() 
+            });
+          }}
         />
       )}
 
@@ -152,6 +191,12 @@ export default function App() {
                 onClick={() => setSensorsActive(!sensorsActive)}
               >
                 Sensors
+              </button>
+              <button
+                className={`cb-btn ${hotspotsActive ? "cb-active" : ""}`}
+                onClick={() => setHotspotsActive(!hotspotsActive)}
+              >
+                Hotspots
               </button>
             </>
           )}

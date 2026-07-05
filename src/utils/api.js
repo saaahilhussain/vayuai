@@ -94,6 +94,11 @@ export async function fetchSensors() {
   return res.json();
 }
 
+export async function fetchHotspots() {
+  const res = await fetch(`${API_BASE}/hotspots`);
+  return res.json();
+}
+
 export function createEventStream(onEvent) {
   const es = new EventSource(`${API_BASE}/events/stream`);
   es.onmessage = (e) => {

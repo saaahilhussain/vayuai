@@ -302,6 +302,8 @@ export default function LiveMap({
   selectedEvent,
   isDarkMode,
   sensorsActive,
+  hotspotsActive,
+  hotspots = [],
   locationPickActive,
   pickedReportLocation,
   onReportLocationPick,
@@ -436,6 +438,28 @@ export default function LiveMap({
               </div>
             </AdvancedMarker>
           ))}
+
+          {/* Hotspot overlays */}
+          {hotspotsActive && hotspots.map((hs) => {
+            const size = Math.max(60, Math.min(150, hs.radiusMeters / 4)); // Scale for visibility
+            return (
+              <AdvancedMarker
+                key={hs.id}
+                position={{ lat: hs.lat, lng: hs.lng }}
+                zIndex={40}
+              >
+                <div 
+                  className={`hotspot-radar severity-${hs.severity}`}
+                  style={{ width: size, height: size, marginTop: -size/2, marginLeft: -size/2 }}
+                >
+                  <div className="hotspot-radar-ring"></div>
+                  <div className="hotspot-radar-center">
+                    <span>#{hs.rank}</span>
+                  </div>
+                </div>
+              </AdvancedMarker>
+            );
+          })}
 
           {selectedMarker && (
             <InfoWindow

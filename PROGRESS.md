@@ -40,7 +40,7 @@ citizen report / social post
 | 2. Flood → Pollution conversion | Pollution taxonomy, Guwahati geocoder, demo data, rebrand, working deterministic pipeline | ✅ Done | Server seeds pollution events; `/api/stats` shows 6 pollution types; manual report test; grep clean of flood/disaster refs |
 | 3. Image-based detection (Gemini Vision) | Photo upload + AI smoke/dust/fire classification | ✅ Done | Upload UI, server image classifier, Gemini confidence shown in feed/map; gracefully reports unavailable analysis when key/config fails |
 | 4. Multi-source fusion | Virtual AQI sensors, duplicate merging, confidence aggregation | ✅ Done | 12 virtual sensors on map; `/api/sensors` returns live readings; duplicate events merge with corroboration count; fusedConfidence shown in feed/popup; sensor pressure feedback loop |
-| 5. Hotspot detection | Spatial clustering, ranked hotspots, hotspot map layer | ⬜ Not started | — |
+| 5. Hotspot detection | Spatial clustering, ranked hotspots, hotspot map layer | ✅ Done | `HotspotEngine` uses 500m grid clustering; UI has pulsing radar overlays and sortable side panel |
 | 6. 24h prediction | Explainable AQI forecast (trend + diurnal + event pressure) | ⬜ Not started | — |
 | 7. Municipal intelligence | Intervention recommendations + AI action brief | ⬜ Not started | — |
 | 8. Accessibility | Voice reporting, multilingual UI | ⏸ Deferred — future work. Note: incoming regional-language reports are already auto-translated (partial Inclusivity coverage today) |
@@ -63,7 +63,7 @@ citizen report / social post
 
 | Criterion | Weight | Covered by | Status |
 |---|---|---|---|
-| Problem-Solution Fit | 20% | Phase 2 (hyper-local reports → map), Phase 5 (hotspots), Phase 7 (municipal actions) | 🟡 Partial — core reporting loop works; hotspots/actions pending |
+| Problem-Solution Fit | 20% | Phase 2 (hyper-local reports → map), Phase 5 (hotspots), Phase 7 (municipal actions) | 🟡 Partial — core reporting loop works, hotspots live; actions pending |
 | AI / Technical Execution | 25% | Phase 2 (NLP + relevancy engine), Phase 3 (Gemini Vision), Phase 6 (forecast), Phase 7 (AI briefs) | 🟡 Partial — deterministic NLP pipeline and Gemini photo classification live; forecast/AI briefs pending |
 | Deployability & Scalability | 25% | Express + SSE architecture, production build served by server, config-driven taxonomy | 🟡 Partial — runs end-to-end locally; docs/demo hardening in Phase 10 |
 | Inclusivity & Accessibility | 15% | Auto-translation of Assamese/Hindi/Bengali reports (live now), Phase 8 (voice/UI languages — deferred) | 🟡 Partial |
@@ -74,7 +74,15 @@ citizen report / social post
 
 ## Next up (awaiting confirmation)
 
-**Phase 5 — Hotspot Detection.** Next target: spatial clustering of events into ranked hotspots with a hotspot layer on the map.
+**Phase 6 — Prediction.** Next target: Explainable AQI forecasting over the next 24 hours.
+
+## Phase 5 change log
+
+- `server/hotspotEngine.js` [NEW] — grid-based spatial clustering (500m cells); computes centroid, composite severity score (incorporating NLP confidence and nearest sensor AQI), and ranks hotspots worst-first
+- `server/index.js` — added `GET /api/hotspots` endpoint
+- `src/components/HotspotPanel.jsx` [NEW] — floating UI panel listing ranked hotspots with scores, event counts, and sensor data; click-to-pan functionality
+- `src/components/LiveMap.jsx` — added pulsing radar overlays for hotspots scaled by severity and radius
+- `src/App.jsx` — added `hotspotsActive` state and toggle button; polls `/api/hotspots` every 15s
 
 ## Phase 4 change log
 

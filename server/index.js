@@ -19,6 +19,7 @@ import { EventStore } from "./eventStore.js";
 import { analyzePollutionImage, generateReportDescription } from "./imageAnalysis.js";
 import { SensorGrid } from "./sensorGrid.js";
 import { getCurrentWeather } from "./weatherService.js";
+import { HotspotEngine } from "./hotspotEngine.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -373,6 +374,15 @@ app.get("/api/sensors", (req, res) => {
 app.get("/api/weather", async (req, res) => {
   const weather = await getCurrentWeather();
   res.json(weather);
+});
+
+// --- Hotspots ---
+app.get("/api/hotspots", (req, res) => {
+  // Get events from the last 6 hours for clustering
+  const now = Date.now();
+  const recentEvents = store.getByTimeRange(now - 6 * 3600 * 1000, now);
+  const hotspots = HotspotEngine.generateHotspots(recentEvents, sensorGrid);
+  res.json(hotspots);
 });
 
 // --- Custom tweet submission ---
