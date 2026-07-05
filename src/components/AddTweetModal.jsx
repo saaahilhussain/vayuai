@@ -32,12 +32,13 @@ export default function AddTweetModal({
   const [locationCoords, setLocationCoords] = useState(null);
   const [locationStatus, setLocationStatus] = useState("idle");
   const [imageDataUrl, setImageDataUrl] = useState(null);
+  const [videoFrames, setVideoFrames] = useState(null); // Array of base64 images
   const [imageMeta, setImageMeta] = useState(null);
   const [status, setStatus] = useState("idle"); // idle, loading, success, error
   const [message, setMessage] = useState("");
   const [aiWriteStatus, setAiWriteStatus] = useState("idle"); // idle, loading
   const [mismatchWarning, setMismatchWarning] = useState("");
-  const hasReportInput = text.trim().length > 0 || Boolean(imageDataUrl);
+  const hasReportInput = text.trim().length > 0 || Boolean(imageDataUrl) || Boolean(videoFrames);
 
   const [allLocations, setAllLocations] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
@@ -162,25 +163,93 @@ export default function AddTweetModal({
       reader.readAsDataURL(file);
     });
 
+  const extractVideoFrames = (file) => 
+    new Promise((resolve, reject) => {
+      const video = document.createElement("video");
+      const url = URL.createObjectURL(file);
+      video.src = url;
+      video.muted = true;
+      video.playsInline = true;
+      
+      const frames = [];
+      const intervalSec = 2; // Extract every 2 seconds
+      const maxFrames = 10;
+      let currentTime = 0;
+
+      video.onloadedmetadata = () => {
+        // Ensure we don't try to seek past duration
+        const duration = video.duration;
+        
+        const captureFrame = () => {
+          if (currentTime > duration || frames.length >= maxFrames) {
+            URL.revokeObjectURL(url);
+            resolve(frames);
+            return;
+          }
+
+          video.currentTime = currentTime;
+        };
+
+        video.onseeked = () => {
+          const maxSide = 1024;
+          const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(video.videoWidth * scale);
+          canvas.height = Math.round(video.videoHeight * scale);
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          frames.push({
+            mimeType: "image/jpeg",
+            data: canvas.toDataURL("image/jpeg", 0.7).split(',')[1] // Just get the base64 part for the backend
+          });
+
+          currentTime += intervalSec;
+          captureFrame();
+        };
+
+        video.onerror = (e) => {
+          URL.revokeObjectURL(url);
+          reject(new Error("Video playback error"));
+        };
+
+        captureFrame();
+      };
+      
+      video.onerror = (e) => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Failed to load video"));
+      };
+    });
+
   const handleImageChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) {
       setImageDataUrl(null);
+      setVideoFrames(null);
       setImageMeta(null);
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
+    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
       setStatus("error");
-      setMessage("Please select an image file.");
+      setMessage("Please select an image or video file.");
       return;
     }
 
     setStatus("loading");
-    setMessage("Preparing image...");
+    setMessage(file.type.startsWith("video/") ? "Extracting key frames..." : "Preparing image...");
     try {
-      const resized = await resizeImage(file);
-      setImageDataUrl(resized);
+      if (file.type.startsWith("video/")) {
+        const frames = await extractVideoFrames(file);
+        setVideoFrames(frames);
+        setImageDataUrl(`data:image/jpeg;base64,${frames[0].data}`); // Show first frame as preview
+      } else {
+        const resized = await resizeImage(file);
+        setImageDataUrl(resized);
+        setVideoFrames(null);
+      }
+      
       setImageMeta({
         filename: file.name,
         mimeType: "image/jpeg",
@@ -248,7 +317,8 @@ export default function AddTweetModal({
         text,
         handle,
         location,
-        imageDataUrl,
+        videoFrames ? null : imageDataUrl,
+        videoFrames,
         imageMeta,
         locationCoords,
       );
@@ -401,10 +471,10 @@ export default function AddTweetModal({
           </div>
 
           <div className="form-group">
-            <label>Photo Evidence (Optional)</label>
+            <label>Photo/Video Evidence (Optional)</label>
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,video/*"
               onChange={handleImageChange}
               disabled={status === "loading"}
             />
@@ -417,6 +487,7 @@ export default function AddTweetModal({
                     type="button"
                     onClick={() => {
                       setImageDataUrl(null);
+                      setVideoFrames(null);
                       setImageMeta(null);
                     }}
                     disabled={status === "loading"}

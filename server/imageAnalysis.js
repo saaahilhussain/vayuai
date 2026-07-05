@@ -321,4 +321,100 @@ If the image does not show any recognizable pollution, set isPollution to false 
   }
 }
 
-export { analyzePollutionImage, generateReportDescription };
+async function analyzeVideoFrames(frames, context = {}) {
+  if (!frames || !Array.isArray(frames) || frames.length === 0) {
+    return unavailable("No video frames provided", context);
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return unavailable("GEMINI_API_KEY is not configured", context);
+
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const locationText = context.location ? `Location hint: ${context.location}.` : "";
+  const reportText = context.text ? `Citizen text: ${context.text}` : "";
+
+  const prompt = `
+You are classifying citizen-submitted pollution evidence from a sequence of video frames for a municipal dashboard in Guwahati.
+You are viewing multiple sequential frames extracted from a single video clip. Analyze them holistically to determine if pollution is occurring.
+Return strict JSON only. Do not wrap it in markdown.
+
+Only approve if the sequence visibly shows one of these target cases:
+- garbage_burning: garbage dump fires or illegal waste burning with visible flame, smoke, ash, or burning waste
+- industrial_smoke: visible smoke or emissions from a factory, kiln, chimney, stack, plant, or industrial site
+- construction_dust: visible dust clouds, uncovered construction material, demolition dust, or active construction dust pollution
+- garbage_dumping: visible illegal waste dumping, garbage piles, overflowing waste, or localized trash pollution pockets
+- smog: visible smog or haze accumulation, especially at busy traffic junctions or localized pollution pockets
+
+Use pollutionType "other" and isPollution false for ordinary streets, buildings, people, vehicles without visible emissions, greenery, water/flooding, food, indoor scenes, screenshots, documents, or any sequence where the target pollution evidence is not clearly visible.
+
+Classify approved videos into exactly one of:
+garbage_burning, industrial_smoke, construction_dust, garbage_dumping, smog.
+
+Estimate severity as one of: low, moderate, high, critical.
+Use critical only for severe visible fire/smoke, dense hazardous plumes, or conditions likely to require urgent field response.
+
+If citizen text is provided, verify that it describes the same visible incident type as the video. A text report about flooding, traffic, accidents, waterlogging, unrelated civic issues, or a different pollution type does not match a garbage/smoke/dust/smog video.
+
+${locationText}
+${reportText}
+
+JSON schema:
+{
+  "isPollution": boolean,
+  "pollutionType": string,
+  "severity": string,
+  "confidence": number,
+  "visibleSignals": string[],
+  "summary": string,
+  "recommendedText": string,
+  "textImageMatch": boolean,
+  "mismatchReason": string
+}
+`;
+
+  const parts = [{ text: prompt }];
+  for (const frame of frames) {
+    if (frame.mimeType && frame.data) {
+      parts.push({
+        inline_data: {
+          mime_type: frame.mimeType,
+          data: frame.data
+        }
+      });
+    }
+  }
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts }],
+        generation_config: {
+          temperature: 0.1,
+          response_mime_type: "application/json",
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      return unavailable(`Gemini request failed: ${response.status} ${body}`, context);
+    }
+
+    const payload = await response.json();
+    const text = extractResponseText(payload);
+    const raw = extractJson(text);
+    if (!raw) {
+      console.warn("Gemini returned unreadable payload for video:", text.slice(0, 500));
+      return unavailable(`Gemini returned an unreadable response: ${text.slice(0, 240)}`, context);
+    }
+
+    return normalizeAnalysis(raw, context);
+  } catch (err) {
+    return unavailable(err.message || "Gemini video analysis failed", context);
+  }
+}
+
+export { analyzePollutionImage, analyzeVideoFrames, generateReportDescription };

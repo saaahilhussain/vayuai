@@ -16,7 +16,7 @@ import {
 } from "./geocoder.js";
 import { generateTweet, generateHistoricalBatch } from "./fakeData.js";
 import { EventStore } from "./eventStore.js";
-import { analyzePollutionImage, generateReportDescription } from "./imageAnalysis.js";
+import { analyzePollutionImage, analyzeVideoFrames, generateReportDescription } from "./imageAnalysis.js";
 import { SensorGrid } from "./sensorGrid.js";
 import { getCurrentWeather } from "./weatherService.js";
 import { HotspotEngine } from "./hotspotEngine.js";
@@ -158,13 +158,19 @@ async function processTweetDetailed(tweet) {
     hintLocations: tweet.hintLocations || [],
   });
 
-  const imageAnalysis = tweet.imageDataUrl
-    ? await analyzePollutionImage(tweet.imageDataUrl, {
-        text: translatedText,
-        location: tweet.hintLocations?.[0] || "",
-        capturedAt: tweet.imageMeta?.capturedAt || null,
-      })
-    : null;
+  let imageAnalysis = null;
+  if (tweet.videoFrames && tweet.videoFrames.length > 0) {
+    imageAnalysis = await analyzeVideoFrames(tweet.videoFrames, {
+      text: translatedText,
+      location: tweet.hintLocations?.[0] || "",
+    });
+  } else if (tweet.imageDataUrl) {
+    imageAnalysis = await analyzePollutionImage(tweet.imageDataUrl, {
+      text: translatedText,
+      location: tweet.hintLocations?.[0] || "",
+      capturedAt: tweet.imageMeta?.capturedAt || null,
+    });
+  }
 
   const hasVisionPollution =
     imageAnalysis?.available &&
@@ -429,17 +435,16 @@ app.get("/api/municipal-brief", async (req, res) => {
 
 // --- Custom tweet submission ---
 app.post("/api/tweet", async (req, res) => {
-  const { text, handle, location, imageDataUrl, imageMeta, locationCoords } =
+  const { text, handle, location, imageDataUrl, videoFrames, imageMeta, locationCoords } =
     req.body;
-  const trimmedText = typeof text === "string" ? text.trim() : "";
-  const hasImage = typeof imageDataUrl === "string" && imageDataUrl.length > 0;
-  if (!trimmedText && !hasImage) {
-    return res.status(400).json({ error: "text or image is required" });
+
+  if (!text && !imageDataUrl && !videoFrames) {
+    return res.status(400).json({ error: "Missing required fields." });
   }
 
   const tweet = {
     id: `tw_custom_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-    text: trimmedText || "Photo evidence submitted for pollution analysis.",
+    text: text || "Photo evidence submitted for pollution analysis.",
     handle: handle || "@custom_user",
     source: "manual",
     timestamp: new Date().toISOString(),
@@ -447,6 +452,7 @@ app.post("/api/tweet", async (req, res) => {
     engagement: { likes: 0, retweets: 0, replies: 0, views: 0 },
     accountMeta: { isVerified: false, followerCount: 100, accountAgeDays: 365 },
     imageDataUrl: imageDataUrl || null,
+    videoFrames: videoFrames || null,
     imageMeta: imageMeta || null,
     locationCoords: normalizeCoords(locationCoords),
   };

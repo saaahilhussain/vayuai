@@ -43,9 +43,10 @@ citizen report / social post
 | 5. Hotspot detection | Spatial clustering, ranked hotspots, hotspot map layer | ✅ Done | `HotspotEngine` uses 500m grid clustering; UI has pulsing radar overlays and sortable side panel |
 | 6. 24h prediction | Explainable AQI forecast (trend + diurnal + event pressure) | ✅ Done | `/api/predictions` endpoint; live Forecast panel with sparklines & explainability tags; map forecast overlays |
 | 7. Municipal intelligence | Intervention recommendations + AI action brief | ✅ Done | `MunicipalEngine` uses Gemini to generate dispatch directives; live Command Center UI in map |
-| 8. Accessibility | Voice reporting, multilingual UI | ⏸ Deferred — future work. Note: incoming regional-language reports are already auto-translated (partial Inclusivity coverage today) |
-| 9. Government data | Live CPCB / IMD integration | ✅ Done | Replaced virtual sensor grid with real CPCB data from OpenAQ for Guwahati; IMD weather proxy via Open-Meteo |
-| 10. Demo & presentation | Demo script, docs, seed tuning | ⬜ Not started | — |
+| 8. Video Analysis | Video upload + Frame extraction + Gemini Vision aggregation | ✅ Done | Client-side HTML5 `<video>` extraction; server sends sequential frames to Gemini for holistic incident assessment |
+| 9. Accessibility | Voice reporting, multilingual UI | ⏸ Deferred — future work. Note: incoming regional-language reports are already auto-translated (partial Inclusivity coverage today) |
+| 10. Government data | Live CPCB / IMD integration | ✅ Done | Replaced virtual sensor grid with real CPCB data from OpenAQ for Guwahati; IMD weather proxy via Open-Meteo |
+| 11. Demo & presentation | Demo script, docs, seed tuning | ⬜ Not started | — |
 
 ## Phase 2 change log
 
@@ -74,7 +75,14 @@ citizen report / social post
 
 ## Next up (awaiting confirmation)
 
-**Phase 8 — Accessibility.** Next target: Voice reporting, multilingual UI.
+**Phase 11 — Demo & presentation.**
+
+## Phase 8 change log
+
+- `src/components/AddTweetModal.jsx` — Added `video/*` support. Uses `<video>` and `<canvas>` to seek and extract up to 10 frames locally (every 2s). Sends `videoFrames` array to backend.
+- `src/utils/api.js` — Added `videoFrames` to `postCustomTweet` payload.
+- `server/imageAnalysis.js` — Added `analyzeVideoFrames` which receives array of base64 images and feeds them all to Gemini using `inline_data` objects for sequential, holistic assessment.
+- `server/index.js` — Modified `processTweetDetailed` to route requests with `videoFrames` to the new video analysis engine.
 
 ## Phase 7 change log
 

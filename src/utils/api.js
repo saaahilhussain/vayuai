@@ -57,6 +57,7 @@ export async function postCustomTweet(
   handle,
   location,
   imageDataUrl = null,
+  videoFrames = null,
   imageMeta = null,
   locationCoords = null,
 ) {
@@ -68,6 +69,7 @@ export async function postCustomTweet(
       handle,
       location,
       imageDataUrl,
+      videoFrames,
       imageMeta,
       locationCoords,
     }),
