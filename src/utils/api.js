@@ -104,6 +104,11 @@ export async function fetchPredictions() {
   return res.json();
 }
 
+export async function fetchMunicipalBrief() {
+  const res = await fetch(`${API_BASE}/municipal-brief`);
+  return res.json();
+}
+
 export function createEventStream(onEvent) {
   const es = new EventSource(`${API_BASE}/events/stream`);
   es.onmessage = (e) => {

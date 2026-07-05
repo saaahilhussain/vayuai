@@ -42,7 +42,7 @@ citizen report / social post
 | 4. Multi-source fusion | Virtual AQI sensors, duplicate merging, confidence aggregation | ✅ Done | 12 virtual sensors on map; `/api/sensors` returns live readings; duplicate events merge with corroboration count; fusedConfidence shown in feed/popup; sensor pressure feedback loop |
 | 5. Hotspot detection | Spatial clustering, ranked hotspots, hotspot map layer | ✅ Done | `HotspotEngine` uses 500m grid clustering; UI has pulsing radar overlays and sortable side panel |
 | 6. 24h prediction | Explainable AQI forecast (trend + diurnal + event pressure) | ✅ Done | `/api/predictions` endpoint; live Forecast panel with sparklines & explainability tags; map forecast overlays |
-| 7. Municipal intelligence | Intervention recommendations + AI action brief | ⬜ Not started | — |
+| 7. Municipal intelligence | Intervention recommendations + AI action brief | ✅ Done | `MunicipalEngine` uses Gemini to generate dispatch directives; live Command Center UI in map |
 | 8. Accessibility | Voice reporting, multilingual UI | ⏸ Deferred — future work. Note: incoming regional-language reports are already auto-translated (partial Inclusivity coverage today) |
 | 9. Government data | Live CPCB / IMD integration | ✅ Done | Replaced virtual sensor grid with real CPCB data from OpenAQ for Guwahati; IMD weather proxy via Open-Meteo |
 | 10. Demo & presentation | Demo script, docs, seed tuning | ⬜ Not started | — |
@@ -74,7 +74,14 @@ citizen report / social post
 
 ## Next up (awaiting confirmation)
 
-**Phase 7 — Municipal Intelligence.** Next target: AI-generated municipal action recommendations based on detected hotspots and predicted AQI.
+**Phase 8 — Accessibility.** Next target: Voice reporting, multilingual UI.
+
+## Phase 7 change log
+
+- `server/municipalEngine.js` [NEW] — Generates actionable municipal interventions using the Gemini API based on hotspots, predictions, and weather data. Includes a robust fallback mechanism if the API key is missing.
+- `server/index.js` — Added `GET /api/municipal-brief` endpoint with a 5-minute cache to prevent Gemini rate limiting.
+- `src/components/MunicipalPanel.jsx` & `.css` [NEW] — Built the "Command Center" UI to display prioritized AI action briefs with dispatch controls.
+- `src/App.jsx` — Added `municipalActive` state and a highlighted "Command Center" toggle button in the map control bar.
 
 ## Phase 6 change log
 

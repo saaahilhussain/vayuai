@@ -5,6 +5,7 @@ import AlertBanner from "./components/AlertBanner";
 import AddTweetModal from "./components/AddTweetModal";
 import HotspotPanel from "./components/HotspotPanel";
 import PredictionPanel from "./components/PredictionPanel";
+import MunicipalPanel from "./components/MunicipalPanel";
 import {
   fetchEvents,
   fetchHotspots,
@@ -30,6 +31,7 @@ export default function App() {
   const [sensorsActive, setSensorsActive] = useState(true);
   const [hotspotsActive, setHotspotsActive] = useState(false);
   const [predictionsActive, setPredictionsActive] = useState(false);
+  const [municipalActive, setMunicipalActive] = useState(false);
   const [hotspots, setHotspots] = useState([]);
   const [predictionData, setPredictionData] = useState(null);
   const [isPickingReportLocation, setIsPickingReportLocation] = useState(false);
@@ -197,6 +199,11 @@ export default function App() {
         />
       )}
 
+      {/* Municipal Panel */}
+      {mapOpen && municipalActive && (
+        <MunicipalPanel onClose={() => setMunicipalActive(false)} />
+      )}
+
       {/* Top right Feed Toggle Button when Map is Open */}
       {mapOpen && (
         <button
@@ -242,6 +249,13 @@ export default function App() {
                 onClick={() => setPredictionsActive(!predictionsActive)}
               >
                 Forecast
+              </button>
+              <button
+                className={`cb-btn ${municipalActive ? "cb-active" : ""}`}
+                onClick={() => setMunicipalActive(!municipalActive)}
+                style={municipalActive ? {} : { color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)' }}
+              >
+                Command Center
               </button>
             </>
           )}

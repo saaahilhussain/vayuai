@@ -21,6 +21,7 @@ import { SensorGrid } from "./sensorGrid.js";
 import { getCurrentWeather } from "./weatherService.js";
 import { HotspotEngine } from "./hotspotEngine.js";
 import { PredictionEngine } from "./predictionEngine.js";
+import { MunicipalEngine } from "./municipalEngine.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -395,6 +396,35 @@ app.get("/api/predictions", async (req, res) => {
   
   const predictions = PredictionEngine.generatePredictions(sensorGrid, recentEvents, weather, hotspots);
   res.json(predictions);
+});
+
+// --- Municipal Intelligence Cache ---
+let municipalCache = { data: null, timestamp: 0 };
+
+app.get("/api/municipal-brief", async (req, res) => {
+  const now = Date.now();
+  
+  // Cache for 5 minutes (300,000 ms) to avoid API rate limits
+  if (municipalCache.data && (now - municipalCache.timestamp < 300000)) {
+    return res.json({ cached: true, actions: municipalCache.data });
+  }
+
+  try {
+    const recentEvents6h = store.getByTimeRange(now - 6 * 3600 * 1000, now);
+    const recentEvents48h = store.getByTimeRange(now - 48 * 3600 * 1000, now);
+    
+    const hotspots = HotspotEngine.generateHotspots(recentEvents6h, sensorGrid);
+    const weather = await getCurrentWeather();
+    const predictions = PredictionEngine.generatePredictions(sensorGrid, recentEvents48h, weather, hotspots);
+    
+    const actions = await MunicipalEngine.generateBrief(hotspots, predictions, weather);
+    
+    municipalCache = { data: actions, timestamp: now };
+    res.json({ cached: false, actions });
+  } catch (err) {
+    console.error("Error generating municipal brief:", err);
+    res.status(500).json({ error: "Failed to generate brief" });
+  }
 });
 
 // --- Custom tweet submission ---
