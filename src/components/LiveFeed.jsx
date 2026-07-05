@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { POLLUTION_TYPES, timeAgo } from '../utils/api';
 import './LiveFeed.css';
 
-export default function LiveFeed({ events, onSelectEvent, onClose }) {
+export default function LiveFeed({ events, onSelectEvent, onClose, isSidebar = false }) {
   const listRef = useRef(null);
   const sorted = [...events].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
@@ -13,12 +13,12 @@ export default function LiveFeed({ events, onSelectEvent, onClose }) {
   }, [events.length]);
 
   return (
-    <div className="live-feed">
+    <div className={`live-feed ${isSidebar ? 'sidebar' : ''}`}>
       <div className="feed-header">
         <span className="feed-header-dot" />
         <span className="feed-header-title">Live Feed</span>
         <span className="feed-header-count">{sorted.length}</span>
-        <button className="feed-header-close" onClick={onClose}>✕</button>
+        {isSidebar && <button className="feed-header-close" onClick={onClose}>✕</button>}
       </div>
 
       <div className="feed-list" ref={listRef}>

@@ -21,6 +21,7 @@ export default function App() {
   const [criticalAlert, setCriticalAlert] = useState(null);
   const isDarkMode = true;
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
   const [isPickingReportLocation, setIsPickingReportLocation] = useState(false);
   const [reportLocationCoords, setReportLocationCoords] = useState(null);
@@ -75,26 +76,56 @@ export default function App() {
 
   return (
     <div id="app">
-      <LiveMap
-        events={displayEvents}
-        heatmapActive={heatmapActive}
-        selectedEvent={selectedEvent}
-        isDarkMode={isDarkMode}
-        locationPickActive={isPickingReportLocation}
-        pickedReportLocation={reportLocationCoords}
-        onReportLocationPick={(coords) => {
-          setReportLocationCoords(coords);
-          setIsPickingReportLocation(false);
-        }}
-        onCancelLocationPick={() => setIsPickingReportLocation(false)}
-      />
+      {mapOpen && (
+        <LiveMap
+          events={displayEvents}
+          heatmapActive={heatmapActive}
+          selectedEvent={selectedEvent}
+          isDarkMode={isDarkMode}
+          locationPickActive={isPickingReportLocation}
+          pickedReportLocation={reportLocationCoords}
+          onReportLocationPick={(coords) => {
+            setReportLocationCoords(coords);
+            setIsPickingReportLocation(false);
+          }}
+          onCancelLocationPick={() => setIsPickingReportLocation(false)}
+        />
+      )}
 
-      {feedOpen && (
+      {/* Main Feed View */}
+      {!mapOpen && (
         <LiveFeed
           events={displayEvents}
-          onSelectEvent={(event) => setSelectedEvent({ ...event, _t: Date.now() })}
-          onClose={() => setFeedOpen(false)}
+          onSelectEvent={(event) => {
+            setSelectedEvent({ ...event, _t: Date.now() });
+            setMapOpen(true); // Open map when clicking an event to show it
+          }}
+          onClose={() => {}} // Feed cannot be closed when it's the main view
+          isSidebar={false}
         />
+      )}
+
+      {/* Sidebar Feed View when Map is Open */}
+      {mapOpen && feedOpen && (
+        <LiveFeed
+          events={displayEvents}
+          onSelectEvent={(event) =>
+            setSelectedEvent({ ...event, _t: Date.now() })
+          }
+          onClose={() => setFeedOpen(false)}
+          isSidebar={true}
+        />
+      )}
+
+      {/* Top right Feed Toggle Button when Map is Open */}
+      {mapOpen && (
+        <button
+          className={`feed-fab ${feedOpen ? "feed-fab-active" : ""}`}
+          onClick={() => setFeedOpen(!feedOpen)}
+        >
+          <span className="feed-fab-dot" />
+          {feedOpen ? "Hide Feed" : "Feed"}
+        </button>
       )}
 
       {/* Floating bottom control bar */}
@@ -106,23 +137,26 @@ export default function App() {
           >
             {isLive ? "Live" : "Paused"}
           </button>
+          {mapOpen && (
+            <button
+              className={`cb-btn ${heatmapActive ? "cb-active" : ""}`}
+              onClick={() => setHeatmapActive(!heatmapActive)}
+            >
+              Heatmap
+            </button>
+          )}
           <button
-            className={`cb-btn ${heatmapActive ? "cb-active" : ""}`}
-            onClick={() => setHeatmapActive(!heatmapActive)}
+            className={`cb-btn ${!mapOpen ? "cb-active" : ""}`}
+            onClick={() => setMapOpen(!mapOpen)}
           >
-            Heatmap
-          </button>
-          <button
-            className={`cb-btn ${feedOpen ? "cb-active" : ""}`}
-            onClick={() => setFeedOpen(!feedOpen)}
-          >
-            Feed
+            {mapOpen ? "Home" : "Show Map"}
           </button>
           <button
             className={`cb-btn ${isAddModalOpen ? "cb-active" : ""}`}
             onClick={() => {
               setIsAddModalOpen(true);
               setIsPickingReportLocation(false);
+              setMapOpen(true); // Switch to map when reporting
             }}
           >
             Report
