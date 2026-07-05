@@ -1,7 +1,6 @@
 const POLLUTION_TYPES = new Set([
   "garbage_burning",
   "industrial_smoke",
-  "vehicle_pollution",
   "construction_dust",
   "garbage_dumping",
   "smog",
@@ -29,7 +28,27 @@ function extractJson(text) {
   const start = candidate.indexOf("{");
   const end = candidate.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) return null;
-  return JSON.parse(candidate.slice(start, end + 1));
+  try {
+    return JSON.parse(candidate.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+function extractResponseText(payload) {
+  if (!payload || typeof payload !== "object") return "";
+
+  const directText =
+    payload.output_text ||
+    payload.text ||
+    payload.response?.text ||
+    payload.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text || "")
+      .join("");
+
+  if (directText) return directText;
+
+  return JSON.stringify(payload);
 }
 
 function normalizeAnalysis(raw, fallback = {}) {
@@ -37,11 +56,12 @@ function normalizeAnalysis(raw, fallback = {}) {
   const pollutionType = POLLUTION_TYPES.has(raw?.pollutionType)
     ? raw.pollutionType
     : "other";
+  const isPollution = Boolean(raw?.isPollution) && pollutionType !== "other";
 
   return {
     provider: "gemini",
     available: true,
-    isPollution: Boolean(raw?.isPollution),
+    isPollution,
     pollutionType,
     severity,
     severityLevel: SEVERITY_LEVELS[severity],
@@ -53,6 +73,12 @@ function normalizeAnalysis(raw, fallback = {}) {
     recommendedText:
       typeof raw?.recommendedText === "string"
         ? raw.recommendedText.slice(0, 280)
+        : "",
+    textImageMatch:
+      typeof raw?.textImageMatch === "boolean" ? raw.textImageMatch : null,
+    mismatchReason:
+      typeof raw?.mismatchReason === "string"
+        ? raw.mismatchReason.slice(0, 220)
         : "",
     capturedAt: fallback.capturedAt || null,
     analyzedAt: new Date().toISOString(),
@@ -71,6 +97,8 @@ function unavailable(reason, fallback = {}) {
     visibleSignals: [],
     summary: "",
     recommendedText: "",
+    textImageMatch: null,
+    mismatchReason: "",
     capturedAt: fallback.capturedAt || null,
     analyzedAt: new Date().toISOString(),
     error: reason,
@@ -84,7 +112,7 @@ async function analyzePollutionImage(dataUrl, context = {}) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return unavailable("GEMINI_API_KEY is not configured", context);
 
-  const model = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const locationText = context.location ? `Location hint: ${context.location}.` : "";
   const reportText = context.text ? `Citizen text: ${context.text}` : "";
@@ -93,11 +121,22 @@ async function analyzePollutionImage(dataUrl, context = {}) {
 You are classifying citizen-submitted pollution evidence for a municipal dashboard in Guwahati.
 Return strict JSON only. Do not wrap it in markdown.
 
-Classify the image into one of these pollutionType values:
-garbage_burning, industrial_smoke, vehicle_pollution, construction_dust, garbage_dumping, smog, other.
+Only approve the image if it visibly shows one of these target cases:
+- garbage_burning: garbage dump fires or illegal waste burning with visible flame, smoke, ash, or burning waste
+- industrial_smoke: visible smoke or emissions from a factory, kiln, chimney, stack, plant, or industrial site
+- construction_dust: visible dust clouds, uncovered construction material, demolition dust, or active construction dust pollution
+- garbage_dumping: visible illegal waste dumping, garbage piles, overflowing waste, or localized trash pollution pockets
+- smog: visible smog or haze accumulation, especially at busy traffic junctions or localized pollution pockets
+
+Use pollutionType "other" and isPollution false for ordinary streets, buildings, people, vehicles without visible emissions, greenery, water/flooding, food, indoor scenes, screenshots, documents, or any image where the target pollution evidence is not clearly visible.
+
+Classify approved images into exactly one of:
+garbage_burning, industrial_smoke, construction_dust, garbage_dumping, smog.
 
 Estimate severity as one of: low, moderate, high, critical.
 Use critical only for severe visible fire/smoke, dense hazardous plumes, or conditions likely to require urgent field response.
+
+If citizen text is provided, verify that it describes the same visible incident type as the image. A text report about flooding, traffic, accidents, waterlogging, unrelated civic issues, or a different pollution type does not match a garbage/smoke/dust/smog image.
 
 ${locationText}
 ${reportText}
@@ -110,7 +149,9 @@ JSON schema:
   "confidence": number,
   "visibleSignals": string[],
   "summary": string,
-  "recommendedText": string
+  "recommendedText": string,
+  "textImageMatch": boolean,
+  "mismatchReason": string
 }
 `;
 
@@ -125,17 +166,17 @@ JSON schema:
             parts: [
               { text: prompt },
               {
-                inlineData: {
-                  mimeType: parsed.mimeType,
+                inline_data: {
+                  mime_type: parsed.mimeType,
                   data: parsed.data,
                 },
               },
             ],
           },
         ],
-        generationConfig: {
+        generation_config: {
           temperature: 0.1,
-          responseMimeType: "application/json",
+          response_mime_type: "application/json",
         },
       }),
     });
@@ -146,9 +187,15 @@ JSON schema:
     }
 
     const payload = await response.json();
-    const text = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
+    const text = extractResponseText(payload);
     const raw = extractJson(text);
-    if (!raw) return unavailable("Gemini returned an unreadable response", context);
+    if (!raw) {
+      console.warn("Gemini returned unreadable payload:", text.slice(0, 500));
+      return unavailable(
+        `Gemini returned an unreadable response: ${text.slice(0, 240)}`,
+        context,
+      );
+    }
 
     return normalizeAnalysis(raw, context);
   } catch (err) {

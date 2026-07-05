@@ -140,6 +140,43 @@ function geocodeBest(locations) {
   return best;
 }
 
+function isWithinGuwahatiBounds(lat, lng) {
+  return lat >= 25.95 && lat <= 26.35 && lng >= 91.45 && lng <= 92.05;
+}
+
+function distanceKm(a, b) {
+  const toRad = (value) => (value * Math.PI) / 180;
+  const radiusKm = 6371;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * radiusKm * Math.asin(Math.sqrt(h));
+}
+
+function nearestLocation(lat, lng) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (!isWithinGuwahatiBounds(lat, lng)) return null;
+
+  const point = { lat, lng };
+  let best = null;
+  for (const [name, value] of Object.entries(LOCATIONS)) {
+    const distance = distanceKm(point, value);
+    if (!best || distance < best.distanceKm) {
+      best = {
+        ...value,
+        matchedName: name,
+        confidence: distance <= 1 ? 0.95 : 0.7,
+        distanceKm: distance,
+      };
+    }
+  }
+  return best;
+}
+
 /**
  * Add slight randomness to coordinates for visual separation on map
  * (±0.003° ≈ 330 m — tuned for city-scale zoom)
@@ -148,4 +185,12 @@ function jitter(coord, amount = 0.003) {
   return coord + (Math.random() - 0.5) * amount;
 }
 
-export { geocode, geocodeBest, jitter, LOCATIONS, STATE_CENTROIDS };
+export {
+  geocode,
+  geocodeBest,
+  jitter,
+  nearestLocation,
+  isWithinGuwahatiBounds,
+  LOCATIONS,
+  STATE_CENTROIDS,
+};

@@ -1,11 +1,36 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { postCustomTweet, fetchLocations } from "../utils/api";
 import "./AddTweetModal.css";
 
-export default function AddTweetModal({ onClose }) {
+const GUWAHATI_BOUNDS = {
+  minLat: 25.95,
+  maxLat: 26.35,
+  minLng: 91.45,
+  maxLng: 92.05,
+};
+
+function isInsideGuwahati(lat, lng) {
+  return (
+    lat >= GUWAHATI_BOUNDS.minLat &&
+    lat <= GUWAHATI_BOUNDS.maxLat &&
+    lng >= GUWAHATI_BOUNDS.minLng &&
+    lng <= GUWAHATI_BOUNDS.maxLng
+  );
+}
+
+export default function AddTweetModal({
+  onClose,
+  isPickingLocation,
+  pickedLocation,
+  onStartPinLocation,
+  onCancelPinLocation,
+  onClearPickedLocation,
+}) {
   const [text, setText] = useState("");
   const [handle, setHandle] = useState("@citizen");
   const [location, setLocation] = useState("");
+  const [locationCoords, setLocationCoords] = useState(null);
+  const [locationStatus, setLocationStatus] = useState("idle");
   const [imageDataUrl, setImageDataUrl] = useState(null);
   const [imageMeta, setImageMeta] = useState(null);
   const [status, setStatus] = useState("idle"); // idle, loading, success, error
@@ -21,6 +46,55 @@ export default function AddTweetModal({ onClose }) {
     fetchLocations().then(setAllLocations).catch(console.error);
   }, []);
 
+  const requestBrowserLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setLocationStatus("manual");
+      setMessage("Location detection is unavailable. Pin the report location on the map.");
+      return;
+    }
+
+    setLocationStatus("detecting");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        if (!isInsideGuwahati(coords.lat, coords.lng)) {
+          setLocationCoords(null);
+          setLocationStatus("manual");
+          setMessage("Detected location is outside Guwahati. Pin the report location on the map.");
+          return;
+        }
+        setLocationCoords(coords);
+        setLocation("Current location");
+        setLocationStatus("detected");
+        setMessage("");
+      },
+      () => {
+        setLocationStatus("manual");
+        setMessage("Could not detect location. Pin the report location on the map.");
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
+    );
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(requestBrowserLocation, 0);
+    return () => window.clearTimeout(timer);
+  }, [requestBrowserLocation]);
+
+  useEffect(() => {
+    if (!pickedLocation) return;
+    const timer = window.setTimeout(() => {
+      setLocationCoords(pickedLocation);
+      setLocation("Pinned location");
+      setLocationStatus("pinned");
+      setMessage("");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [pickedLocation]);
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
@@ -34,6 +108,11 @@ export default function AddTweetModal({ onClose }) {
   const handleLocationChange = (e) => {
     const val = e.target.value;
     setLocation(val);
+    if (val.trim() && val !== "Current location" && val !== "Pinned location") {
+      setLocationCoords(null);
+      onClearPickedLocation?.();
+      setLocationStatus("manual");
+    }
     if (val.length > 0) {
       const filtered = allLocations.filter(loc => loc.toLowerCase().includes(val.toLowerCase()));
       setSuggestions(filtered);
@@ -45,6 +124,9 @@ export default function AddTweetModal({ onClose }) {
 
   const handleSelectSuggestion = (loc) => {
     setLocation(loc);
+    setLocationCoords(null);
+    onClearPickedLocation?.();
+    setLocationStatus("manual");
     setShowSuggestions(false);
   };
 
@@ -110,6 +192,11 @@ export default function AddTweetModal({ onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!hasReportInput) return;
+    if (!location.trim() && !locationCoords) {
+      setStatus("error");
+      setMessage("Add a location by detecting your position, selecting a locality, or pinning the report on the map.");
+      return;
+    }
 
     setStatus("loading");
     setMessage("");
@@ -121,6 +208,7 @@ export default function AddTweetModal({ onClose }) {
         location,
         imageDataUrl,
         imageMeta,
+        locationCoords,
       );
 
       if (response.accepted) {
@@ -136,13 +224,25 @@ export default function AddTweetModal({ onClose }) {
         }, 1500);
       } else {
         setStatus("error");
-        setMessage(`Rejected: ${response.reason}`);
+        setMessage(response.reason);
       }
     } catch {
       setStatus("error");
       setMessage("Failed to connect to the server.");
     }
   };
+
+  if (isPickingLocation) {
+    return (
+      <div className="report-minimized">
+        <div>
+          <strong>Pick report location</strong>
+          <span>Click the main map to place the report pin.</span>
+        </div>
+        <button type="button" onClick={onCancelPinLocation}>Back</button>
+      </div>
+    );
+  }
 
   return (
     <div className="modal-backdrop">
@@ -171,7 +271,7 @@ export default function AddTweetModal({ onClose }) {
           </div>
 
           <div className="form-group" ref={wrapperRef} style={{ position: "relative" }}>
-            <label>Location (Optional)</label>
+            <label>Location</label>
             <input
               type="text"
               value={location}
@@ -190,6 +290,32 @@ export default function AddTweetModal({ onClose }) {
                 ))}
               </ul>
             )}
+          </div>
+
+          <div className="form-group">
+            <div className="location-row">
+              <button
+                type="button"
+                className="btn-location"
+                onClick={requestBrowserLocation}
+                disabled={status === "loading" || locationStatus === "detecting"}
+              >
+                {locationStatus === "detecting" ? "Detecting..." : "Use my location"}
+              </button>
+              {locationCoords && (
+                <span className="location-coords">
+                  {locationCoords.lat.toFixed(4)}, {locationCoords.lng.toFixed(4)}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              className="btn-pin-map"
+              onClick={onStartPinLocation}
+              disabled={status === "loading"}
+            >
+              Pin on map
+            </button>
           </div>
 
           <div className="form-group">
@@ -233,7 +359,7 @@ export default function AddTweetModal({ onClose }) {
 
           {message && (
             <div className={`status-message ${status}`}>
-              {status === "success" ? "✅ " : status === "error" ? "❌ " : ""}
+              {status === "success" ? "OK: " : status === "error" ? "Rejected: " : ""}
               {message}
             </div>
           )}

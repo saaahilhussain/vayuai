@@ -16,6 +16,8 @@
 .add-tweet-modal {
   width: 100%;
   max-width: 450px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   background: hsla(220, 20%, 13%, 0.95);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -254,6 +256,112 @@
 .suggestions-dropdown li:hover {
   background: hsla(200, 95%, 55%, 0.15);
   color: var(--accent);
+}
+
+.location-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+}
+
+.btn-location {
+  background: hsla(200, 95%, 55%, 0.12);
+  border: 1px solid hsla(200, 95%, 55%, 0.35);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+}
+
+.btn-location:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.location-coords {
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-pin-map {
+  width: 100%;
+  background: hsla(220, 20%, 13%, 0.6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 9px 10px;
+  text-align: center;
+}
+
+.btn-pin-map:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-pin-map:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.report-minimized {
+  position: fixed;
+  left: 50%;
+  top: 18px;
+  z-index: 2300;
+  width: min(420px, calc(100vw - 28px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid hsla(200, 95%, 55%, 0.35);
+  border-radius: var(--radius-md);
+  background: hsla(220, 20%, 10%, 0.92);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+
+.report-minimized div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.report-minimized strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.report-minimized span {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-minimized button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
 }
 
 @keyframes fadeIn {

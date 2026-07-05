@@ -8,6 +8,21 @@ import { POLLUTION_TYPES, timeAgo } from "../utils/api";
 import "./LiveMap.css";
 
 const GUWAHATI_CENTER = [91.75, 26.15];
+const GUWAHATI_BOUNDS = {
+  minLat: 25.95,
+  maxLat: 26.35,
+  minLng: 91.45,
+  maxLng: 92.05,
+};
+
+function isInsideGuwahati(lat, lng) {
+  return (
+    lat >= GUWAHATI_BOUNDS.minLat &&
+    lat <= GUWAHATI_BOUNDS.maxLat &&
+    lng >= GUWAHATI_BOUNDS.minLng &&
+    lng <= GUWAHATI_BOUNDS.maxLng
+  );
+}
 
 const SEVERITY_PIN_BG = {
   critical: "#ef444466",
@@ -165,10 +180,21 @@ const createPopupElement = (event) => {
 
 
 
-export default function LiveMap({ events, heatmapActive, selectedEvent, isDarkMode, timelineActive }) {
+export default function LiveMap({
+  events,
+  heatmapActive,
+  selectedEvent,
+  isDarkMode,
+  timelineActive,
+  locationPickActive,
+  pickedReportLocation,
+  onReportLocationPick,
+  onCancelLocationPick,
+}) {
   const mapContainer = useRef(null);
   const providerRef = useRef(null);
   const managerRef = useRef(null);
+  const reportLocationMarkerRef = useRef(null);
   const [tokenMissing, setTokenMissing] = useState(false);
 
   // Initialize map
@@ -461,13 +487,68 @@ export default function LiveMap({ events, heatmapActive, selectedEvent, isDarkMo
     });
   }, [selectedEvent, tokenMissing]);
 
+  useEffect(() => {
+    if (!providerRef.current) return;
+    const map = providerRef.current.getMap();
+
+    const handleClick = (event) => {
+      if (!locationPickActive) return;
+      const coords = {
+        lat: event.lngLat.lat,
+        lng: event.lngLat.lng,
+      };
+      if (!isInsideGuwahati(coords.lat, coords.lng)) return;
+      onReportLocationPick?.(coords);
+    };
+
+    map.getCanvas().style.cursor = locationPickActive ? "crosshair" : "";
+    map.on("click", handleClick);
+
+    return () => {
+      map.off("click", handleClick);
+      map.getCanvas().style.cursor = "";
+    };
+  }, [locationPickActive, onReportLocationPick]);
+
+  useEffect(() => {
+    if (!providerRef.current) return;
+    const map = providerRef.current.getMap();
+
+    if (reportLocationMarkerRef.current) {
+      reportLocationMarkerRef.current.remove();
+      reportLocationMarkerRef.current = null;
+    }
+
+    if (!pickedReportLocation) return;
+
+    const el = document.createElement("div");
+    el.className = "report-location-marker";
+    reportLocationMarkerRef.current = new maplibregl.Marker({ element: el })
+      .setLngLat([pickedReportLocation.lng, pickedReportLocation.lat])
+      .addTo(map);
+
+    return () => {
+      if (reportLocationMarkerRef.current) {
+        reportLocationMarkerRef.current.remove();
+        reportLocationMarkerRef.current = null;
+      }
+    };
+  }, [pickedReportLocation]);
+
   return (
-    <div className="livemap-container">
+    <div className={`livemap-container ${locationPickActive ? "location-pick-active" : ""}`}>
       <div
         ref={mapContainer}
         id="live-map"
         style={{ width: "100%", height: "100%" }}
       />
+
+      {locationPickActive && !tokenMissing && (
+        <div className="location-pick-banner">
+          <span>Click the incident location on the map</span>
+          <button type="button" onClick={onCancelLocationPick}>Cancel</button>
+        </div>
+      )}
 
       {tokenMissing && (
         <div

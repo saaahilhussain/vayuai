@@ -25,6 +25,8 @@ export default function App() {
   const isDarkMode = true;
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
+  const [isPickingReportLocation, setIsPickingReportLocation] = useState(false);
+  const [reportLocationCoords, setReportLocationCoords] = useState(null);
 
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
@@ -94,6 +96,12 @@ export default function App() {
     }
   };
 
+  const handleCloseReport = () => {
+    setIsAddModalOpen(false);
+    setIsPickingReportLocation(false);
+    setReportLocationCoords(null);
+  };
+
   return (
     <div id="app">
       <LiveMap
@@ -102,6 +110,13 @@ export default function App() {
         selectedEvent={selectedEvent}
         isDarkMode={isDarkMode}
         timelineActive={timelineActive}
+        locationPickActive={isPickingReportLocation}
+        pickedReportLocation={reportLocationCoords}
+        onReportLocationPick={(coords) => {
+          setReportLocationCoords(coords);
+          setIsPickingReportLocation(false);
+        }}
+        onCancelLocationPick={() => setIsPickingReportLocation(false)}
       />
 
       {feedOpen && (
@@ -143,7 +158,10 @@ export default function App() {
           </button>
           <button
             className={`cb-btn ${isAddModalOpen ? "cb-active" : ""}`}
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={() => {
+              setIsAddModalOpen(true);
+              setIsPickingReportLocation(false);
+            }}
           >
             Report
           </button>
@@ -177,7 +195,14 @@ export default function App() {
       )}
 
       {isAddModalOpen && (
-        <AddTweetModal onClose={() => setIsAddModalOpen(false)} />
+        <AddTweetModal
+          onClose={handleCloseReport}
+          isPickingLocation={isPickingReportLocation}
+          pickedLocation={reportLocationCoords}
+          onStartPinLocation={() => setIsPickingReportLocation(true)}
+          onCancelPinLocation={() => setIsPickingReportLocation(false)}
+          onClearPickedLocation={() => setReportLocationCoords(null)}
+        />
       )}
     </div>
   );

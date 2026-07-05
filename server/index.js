@@ -6,7 +6,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { processText } from "./nlpPipeline.js";
 import { translateText } from "./translator.js";
-import { geocodeBest, jitter, LOCATIONS } from "./geocoder.js";
+import {
+  geocodeBest,
+  isWithinGuwahatiBounds,
+  jitter,
+  nearestLocation,
+  LOCATIONS,
+} from "./geocoder.js";
 import { generateTweet, generateHistoricalBatch } from "./fakeData.js";
 import { EventStore } from "./eventStore.js";
 import { analyzePollutionImage } from "./imageAnalysis.js";
@@ -22,6 +28,29 @@ app.use(express.json({ limit: "8mb" }));
 
 const store = new EventStore(500);
 const sseClients = [];
+
+const TARGET_IMAGE_TYPES = new Set([
+  "garbage_burning",
+  "industrial_smoke",
+  "construction_dust",
+  "garbage_dumping",
+  "smog",
+]);
+
+const TYPE_COMPATIBILITY = {
+  garbage_burning: new Set(["garbage_burning", "garbage_dumping"]),
+  garbage_dumping: new Set(["garbage_dumping", "garbage_burning"]),
+  industrial_smoke: new Set(["industrial_smoke", "smog"]),
+  construction_dust: new Set(["construction_dust"]),
+  smog: new Set(["smog", "industrial_smoke"]),
+};
+
+const UNRELATED_REPORT_PATTERNS = [
+  /\b(flood|flooding|waterlog|waterlogging|drain overflow|rainwater|standing water)\b/i,
+  /\b(accident|crash|collision|injury|ambulance)\b/i,
+  /\b(power cut|electricity|street light|pothole|road damage|traffic signal)\b/i,
+  /\b(theft|crime|fight|protest|noise complaint)\b/i,
+];
 
 // --- SSE Setup ---
 function broadcastEvent(event) {
@@ -50,6 +79,51 @@ function analysisUnavailableReason(imageAnalysis) {
     return "Gemini image analysis is not configured on the server";
   }
   return imageAnalysis.error || "Image analysis is unavailable";
+}
+
+function normalizeCoords(coords) {
+  if (!coords || typeof coords !== "object") return null;
+  const lat = Number(coords.lat);
+  const lng = Number(coords.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (!isWithinGuwahatiBounds(lat, lng)) return null;
+  return { lat, lng };
+}
+
+function isCompatiblePollutionType(textType, imageType) {
+  if (!textType || textType === "other") return true;
+  return TYPE_COMPATIBILITY[imageType]?.has(textType) || false;
+}
+
+function validateManualImageReport({ text, nlp, imageAnalysis }) {
+  if (!imageAnalysis) return null;
+  if (!imageAnalysis.available) return analysisUnavailableReason(imageAnalysis);
+
+  if (
+    !imageAnalysis.isPollution ||
+    !TARGET_IMAGE_TYPES.has(imageAnalysis.pollutionType) ||
+    imageAnalysis.confidence < 0.72
+  ) {
+    return "The uploaded image does not clearly show garbage burning, waste dumping, industrial smoke, construction dust, or smog. Please upload a relevant photo.";
+  }
+
+  const meaningfulText = typeof text === "string" && text.trim().length >= 12;
+  if (!meaningfulText) return null;
+
+  if (imageAnalysis.textImageMatch === false) {
+    return imageAnalysis.mismatchReason ||
+      "The report description and uploaded image do not appear related. Please upload relevant data that describes the same incident.";
+  }
+
+  if (nlp.isPollution && !isCompatiblePollutionType(nlp.pollutionType, imageAnalysis.pollutionType)) {
+    return "The report description and uploaded image describe different pollution types. Please make the text and photo refer to the same incident.";
+  }
+
+  if (!nlp.isPollution && UNRELATED_REPORT_PATTERNS.some((pattern) => pattern.test(text))) {
+    return "The report description and uploaded image do not appear related. Please upload relevant data that describes the same incident.";
+  }
+
+  return null;
 }
 
 // --- Process a raw tweet into a structured event ---
@@ -83,7 +157,24 @@ async function processTweetDetailed(tweet) {
   const hasVisionPollution =
     imageAnalysis?.available &&
     imageAnalysis.isPollution &&
-    imageAnalysis.confidence >= 0.45;
+    TARGET_IMAGE_TYPES.has(imageAnalysis.pollutionType) &&
+    imageAnalysis.confidence >= (tweet.source === "manual" ? 0.72 : 0.45);
+
+  if (tweet.source === "manual" && imageAnalysis) {
+    const rejectionReason = validateManualImageReport({
+      text: translatedText,
+      nlp,
+      imageAnalysis,
+    });
+    if (rejectionReason) {
+      return {
+        event: null,
+        reason: rejectionReason,
+        nlp,
+        imageAnalysis,
+      };
+    }
+  }
 
   if (!nlp.isPollution && !hasVisionPollution) {
     return {
@@ -109,13 +200,16 @@ async function processTweetDetailed(tweet) {
     };
   }
 
-  const geo = geocodeBest(
-    nlp.locations.length > 0 ? nlp.locations : tweet.hintLocations || [],
-  );
+  const submittedCoords = normalizeCoords(tweet.locationCoords);
+  const geo = submittedCoords
+    ? nearestLocation(submittedCoords.lat, submittedCoords.lng)
+    : geocodeBest(
+        nlp.locations.length > 0 ? nlp.locations : tweet.hintLocations || [],
+      );
   if (!geo) {
     return {
       event: null,
-      reason: "Could not map the report to a known Guwahati location",
+      reason: "Please choose a Guwahati location or pin the report on the map.",
       nlp,
       imageAnalysis,
     };
@@ -153,11 +247,12 @@ async function processTweetDetailed(tweet) {
     pollutionType,
     severity,
     severityLevel,
-    locations: nlp.locations,
+    locations: nlp.locations.length > 0 ? nlp.locations : [geo.matchedName],
     locationName: geo.matchedName || nlp.locations[0],
     state: geo.state,
-    lat: jitter(geo.lat),
-    lng: jitter(geo.lng),
+    lat: submittedCoords ? submittedCoords.lat : jitter(geo.lat),
+    lng: submittedCoords ? submittedCoords.lng : jitter(geo.lng),
+    locationSource: submittedCoords ? "user_pin" : "geocoded_text",
     confidence,
     affectedCount: nlp.affectedCount,
     relevancyScore: nlp.relevancyScore,
@@ -233,7 +328,7 @@ app.get("/api/locations", (req, res) => {
 
 // --- Custom tweet submission ---
 app.post("/api/tweet", async (req, res) => {
-  const { text, handle, location, imageDataUrl, imageMeta } = req.body;
+  const { text, handle, location, imageDataUrl, imageMeta, locationCoords } = req.body;
   const trimmedText = typeof text === "string" ? text.trim() : "";
   const hasImage = typeof imageDataUrl === "string" && imageDataUrl.length > 0;
   if (!trimmedText && !hasImage) {
@@ -251,6 +346,7 @@ app.post("/api/tweet", async (req, res) => {
     accountMeta: { isVerified: false, followerCount: 100, accountAgeDays: 365 },
     imageDataUrl: imageDataUrl || null,
     imageMeta: imageMeta || null,
+    locationCoords: normalizeCoords(locationCoords),
   };
 
   const result = await processTweetDetailed(tweet);
