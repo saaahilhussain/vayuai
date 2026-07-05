@@ -1,0 +1,161 @@
+// In-memory event store with aggregation methods
+
+class EventStore {
+  constructor(maxEvents = 500) {
+    this.events = [];
+    this.maxEvents = maxEvents;
+    this.noiseFiltered = 0; // Track filtered noise count
+  }
+
+  add(event) {
+    this.events.push(event);
+    if (this.events.length > this.maxEvents) {
+      this.events = this.events.slice(-this.maxEvents);
+    }
+    return event;
+  }
+
+  incrementNoiseFiltered() {
+    this.noiseFiltered++;
+  }
+
+  getAll() {
+    return this.events;
+  }
+
+  getRecent(count = 50) {
+    return this.events.slice(-count);
+  }
+
+  getByTimeRange(startTime, endTime) {
+    return this.events.filter((e) => {
+      const t = new Date(e.timestamp).getTime();
+      return t >= startTime && t <= endTime;
+    });
+  }
+
+  /**
+   * Get recent events from a specific location (for corroboration)
+   * @param {string} locationName
+   * @param {number} windowMs - time window in ms (default 30 min)
+   */
+  getRecentByLocation(locationName, windowMs = 30 * 60 * 1000) {
+    if (!locationName) return [];
+    const now = Date.now();
+    const lowerLoc = locationName.toLowerCase();
+    return this.events.filter((e) => {
+      const age = now - new Date(e.timestamp).getTime();
+      if (age > windowMs) return false;
+      const eventLoc = (e.locationName || "").toLowerCase();
+      return eventLoc === lowerLoc || (e.locations || []).some((l) => l.toLowerCase() === lowerLoc);
+    });
+  }
+
+  getStats() {
+    const now = Date.now();
+    const last24h = this.events.filter(
+      (e) => now - new Date(e.timestamp).getTime() < 24 * 3600 * 1000,
+    );
+
+    const byType = {};
+    const byState = {};
+    const bySeverity = { critical: 0, high: 0, moderate: 0, low: 0 };
+    const byHour = {};
+
+    for (const event of last24h) {
+      // By type
+      byType[event.pollutionType] = (byType[event.pollutionType] || 0) + 1;
+      // By state
+      if (event.state) {
+        byState[event.state] = (byState[event.state] || 0) + 1;
+      }
+      // By severity
+      if (bySeverity[event.severity] !== undefined) {
+        bySeverity[event.severity]++;
+      }
+      // By hour
+      const hour = new Date(event.timestamp).getHours();
+      byHour[hour] = (byHour[hour] || 0) + 1;
+    }
+
+    // Most affected district
+    const locationCounts = {};
+    for (const event of last24h) {
+      if (event.locationName) {
+        locationCounts[event.locationName] =
+          (locationCounts[event.locationName] || 0) + 1;
+      }
+    }
+    const mostAffected = Object.entries(locationCounts).sort(
+      (a, b) => b[1] - a[1],
+    )[0];
+
+    return {
+      total: this.events.length,
+      last24h: last24h.length,
+      noiseFiltered: this.noiseFiltered,
+      byType,
+      byState,
+      bySeverity,
+      byHour,
+      mostAffected: mostAffected
+        ? { name: mostAffected[0], count: mostAffected[1] }
+        : null,
+      totalAffectedPeople: last24h.reduce(
+        (sum, e) => sum + (e.affectedCount || 0),
+        0,
+      ),
+    };
+  }
+
+  getTrendData(hours = 48) {
+    const now = Date.now();
+    const bucketSize = 3600 * 1000; // 1 hour
+    const buckets = [];
+
+    for (let i = hours; i >= 0; i--) {
+      const bucketStart = now - i * bucketSize;
+      const bucketEnd = bucketStart + bucketSize;
+      const events = this.events.filter((e) => {
+        const t = new Date(e.timestamp).getTime();
+        return t >= bucketStart && t < bucketEnd;
+      });
+
+      const types = {};
+      for (const e of events) {
+        types[e.pollutionType] = (types[e.pollutionType] || 0) + 1;
+      }
+
+      buckets.push({
+        time: new Date(bucketStart).toISOString(),
+        hour: new Date(bucketStart).getHours(),
+        total: events.length,
+        garbage_burning: types.garbage_burning || 0,
+        industrial_smoke: types.industrial_smoke || 0,
+        vehicle_pollution: types.vehicle_pollution || 0,
+        construction_dust: types.construction_dust || 0,
+        garbage_dumping: types.garbage_dumping || 0,
+        smog: types.smog || 0,
+      });
+    }
+
+    return buckets;
+  }
+
+  getHeatmapData(startTime = null, endTime = null) {
+    let filtered = this.events;
+    if (startTime && endTime) {
+      filtered = this.getByTimeRange(startTime, endTime);
+    }
+    return filtered
+      .filter((e) => e.lat && e.lng)
+      .map((e) => ({
+        lat: e.lat,
+        lng: e.lng,
+        intensity: e.severityLevel / 4,
+      }));
+  }
+}
+
+export { EventStore };
+
