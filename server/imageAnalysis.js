@@ -208,4 +208,117 @@ JSON schema:
   }
 }
 
-export { analyzePollutionImage };
+async function generateReportDescription(dataUrl, context = {}) {
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed) return { success: false, error: "Invalid image data" };
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return { success: false, error: "GEMINI_API_KEY is not configured" };
+
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const locationHint = context.location ? `Location hint: ${context.location}.` : "";
+  const hasUserText = typeof context.text === "string" && context.text.trim().length >= 5;
+  const userTextBlock = hasUserText ? `Citizen's current description: "${context.text.trim()}"` : "";
+
+  const prompt = `
+You are helping a citizen write a pollution incident report for a municipal dashboard in Guwahati, India.
+
+Analyze the uploaded photo carefully.
+
+The platform tracks these pollution types:
+- Garbage dump fires / illegal waste burning
+- Industrial smoke emissions
+- Construction dust
+- Smog accumulation at busy traffic junctions
+- Localized pollution pockets / illegal dumping
+
+TASK:
+${hasUserText
+  ? `The citizen has written their own description. First, check if it matches what is actually visible in the image.
+
+${userTextBlock}
+
+If the description accurately describes what the image shows (even roughly), improve and expand it into a detailed 2-3 sentence report. Set scenario to "improve" and mismatchWarning to "".
+
+If the description does NOT match the image (e.g. text says flooding/storm/accident but image shows garbage/smoke/dust), set scenario to "mismatch", write a brief mismatchWarning explaining what the text says vs what the image actually shows, and write a corrected generatedText based only on what is visible in the image.`
+  : `No description has been provided. Analyze the image and write a detailed 2-3 sentence first-person citizen report describing the visible pollution incident. Set scenario to "image_only" and mismatchWarning to "".`}
+
+${locationHint}
+
+Write in a natural, concerned citizen tone — not robotic. Mention specific visible details (color of smoke, size of dump, density of dust, etc.).
+
+Return strict JSON only. Do not wrap in markdown.
+
+JSON schema:
+{
+  "generatedText": string,
+  "scenario": "image_only" | "improve" | "mismatch",
+  "mismatchWarning": string,
+  "isPollution": boolean,
+  "pollutionType": string
+}
+
+If the image does not show any recognizable pollution, set isPollution to false and generatedText to "" and scenario to "image_only".
+`;
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              {
+                inline_data: {
+                  mime_type: parsed.mimeType,
+                  data: parsed.data,
+                },
+              },
+            ],
+          },
+        ],
+        generation_config: {
+          temperature: 0.4,
+          response_mime_type: "application/json",
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      return { success: false, error: `Gemini request failed: ${response.status} ${body}` };
+    }
+
+    const payload = await response.json();
+    const text = extractResponseText(payload);
+    const raw = extractJson(text);
+
+    if (!raw) {
+      return { success: false, error: "Gemini returned an unreadable response" };
+    }
+
+    if (raw.isPollution === false || !raw.generatedText) {
+      return {
+        success: false,
+        error: "The image does not appear to show pollution. Please upload a photo showing garbage burning, smoke, dust, smog, or illegal dumping.",
+      };
+    }
+
+    return {
+      success: true,
+      generatedText: typeof raw.generatedText === "string" ? raw.generatedText.slice(0, 500) : "",
+      scenario: ["image_only", "improve", "mismatch"].includes(raw.scenario) ? raw.scenario : "image_only",
+      mismatchWarning: typeof raw.mismatchWarning === "string" ? raw.mismatchWarning.slice(0, 300) : "",
+      pollutionType: POLLUTION_TYPES.has(raw.pollutionType) ? raw.pollutionType : "other",
+    };
+  } catch (err) {
+    return { success: false, error: err.message || "AI Write failed" };
+  }
+}
+
+export { analyzePollutionImage, generateReportDescription };

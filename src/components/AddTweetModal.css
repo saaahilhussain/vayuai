@@ -383,3 +383,101 @@
     transform: translateY(0);
   }
 }
+
+/* ── AI Write ── */
+
+.ai-write-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.btn-ai-write {
+  background: linear-gradient(135deg, hsla(270, 80%, 60%, 0.2), hsla(200, 95%, 55%, 0.2));
+  border: 1px solid hsla(270, 60%, 60%, 0.45);
+  border-radius: 100px;
+  color: hsl(270, 80%, 72%);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 12px;
+  letter-spacing: 0.3px;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+
+.btn-ai-write:hover:not(:disabled) {
+  background: linear-gradient(135deg, hsla(270, 80%, 60%, 0.35), hsla(200, 95%, 55%, 0.35));
+  border-color: hsl(270, 70%, 65%);
+  box-shadow: 0 0 14px hsla(270, 80%, 60%, 0.25), 0 0 4px hsla(200, 95%, 55%, 0.2);
+  color: hsl(270, 85%, 80%);
+  transform: translateY(-1px);
+}
+
+.btn-ai-write:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.btn-ai-write.loading {
+  animation: aiPulse 1.2s ease-in-out infinite;
+  border-color: hsl(270, 70%, 65%);
+  color: hsl(270, 85%, 80%);
+}
+
+.textarea-wrap {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.textarea-wrap textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.textarea-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  border-radius: var(--radius-md);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsla(270, 80%, 60%, 0.08) 30%,
+    hsla(270, 80%, 60%, 0.18) 50%,
+    hsla(270, 80%, 60%, 0.08) 70%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmerSlide 1.6s ease-in-out infinite;
+}
+
+.mismatch-warning {
+  font-size: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: hsla(40, 90%, 50%, 0.12);
+  border: 1px solid hsla(40, 90%, 50%, 0.3);
+  color: hsl(40, 95%, 65%);
+  line-height: 1.45;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes aiPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes shimmerSlide {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

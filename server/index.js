@@ -8,6 +8,7 @@ import { processText } from "./nlpPipeline.js";
 import { translateText } from "./translator.js";
 import {
   geocodeBest,
+  
   isWithinGuwahatiBounds,
   jitter,
   nearestLocation,
@@ -15,7 +16,7 @@ import {
 } from "./geocoder.js";
 import { generateTweet, generateHistoricalBatch } from "./fakeData.js";
 import { EventStore } from "./eventStore.js";
-import { analyzePollutionImage } from "./imageAnalysis.js";
+import { analyzePollutionImage, generateReportDescription } from "./imageAnalysis.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,10 +112,7 @@ function validateManualImageReport({ text, nlp, imageAnalysis }) {
   if (!meaningfulText) return null;
 
   if (imageAnalysis.textImageMatch === false) {
-    return (
-      imageAnalysis.mismatchReason ||
-      "The report description and uploaded image do not appear related. Please upload relevant data that describes the same incident."
-    );
+    return "The image is correct, but your description does not match it. Please rewrite it to describe the visible pollution, or use the ✨ AI Write button to generate one.";
   }
 
   if (
@@ -379,6 +377,25 @@ app.post("/api/tweet", async (req, res) => {
     accepted: true,
     event,
   });
+});
+
+// --- AI Write: generate/improve report description ---
+app.post("/api/ai-write", async (req, res) => {
+  const { imageDataUrl, text, location } = req.body;
+
+  if (!imageDataUrl || typeof imageDataUrl !== "string" || !imageDataUrl.startsWith("data:image/")) {
+    return res.status(400).json({
+      success: false,
+      error: "An uploaded image is required for AI Write.",
+    });
+  }
+
+  const result = await generateReportDescription(imageDataUrl, {
+    text: typeof text === "string" ? text : "",
+    location: typeof location === "string" ? location : "",
+  });
+
+  res.json(result);
 });
 
 app.post("/api/simulate", async (req, res) => {

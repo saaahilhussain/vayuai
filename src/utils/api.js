@@ -75,6 +75,15 @@ export async function postCustomTweet(
   return res.json();
 }
 
+export async function aiWriteReport(imageDataUrl, text, location) {
+  const res = await fetch(`${API_BASE}/ai-write`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ imageDataUrl, text, location }),
+  });
+  return res.json();
+}
+
 export async function fetchLocations() {
   const res = await fetch(`${API_BASE}/locations`);
   return res.json();
@@ -121,7 +130,7 @@ export function timeAgo(timestamp) {
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);~~
+  const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
 }

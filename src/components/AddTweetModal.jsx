@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { postCustomTweet, fetchLocations } from "../utils/api";
+import { postCustomTweet, fetchLocations, aiWriteReport } from "../utils/api";
 import "./AddTweetModal.css";
 
 const GUWAHATI_BOUNDS = {
@@ -35,6 +35,8 @@ export default function AddTweetModal({
   const [imageMeta, setImageMeta] = useState(null);
   const [status, setStatus] = useState("idle"); // idle, loading, success, error
   const [message, setMessage] = useState("");
+  const [aiWriteStatus, setAiWriteStatus] = useState("idle"); // idle, loading
+  const [mismatchWarning, setMismatchWarning] = useState("");
   const hasReportInput = text.trim().length > 0 || Boolean(imageDataUrl);
 
   const [allLocations, setAllLocations] = useState([]);
@@ -197,6 +199,36 @@ export default function AddTweetModal({
     }
   };
 
+  const handleAiWrite = async () => {
+    if (!imageDataUrl) return;
+    setAiWriteStatus("loading");
+    setMismatchWarning("");
+    setMessage("");
+    setStatus("idle");
+
+    try {
+      const result = await aiWriteReport(imageDataUrl, text, location);
+
+      if (!result.success) {
+        setStatus("error");
+        setMessage(result.error || "AI Write failed.");
+        setAiWriteStatus("idle");
+        return;
+      }
+
+      if (result.scenario === "mismatch" && result.mismatchWarning) {
+        setMismatchWarning(result.mismatchWarning);
+      }
+
+      setText(result.generatedText);
+      setAiWriteStatus("idle");
+    } catch {
+      setStatus("error");
+      setMessage("Could not connect to the AI service.");
+      setAiWriteStatus("idle");
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!hasReportInput) return;
@@ -340,14 +372,32 @@ export default function AddTweetModal({
           </div>
 
           <div className="form-group">
-            <label>Report Content</label>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="E.g. Thick black smoke from garbage burning near Boragaon right now! Eyes burning, can't breathe. Add a photo if text is brief."
-              rows={4}
-              disabled={status === "loading"}
-            />
+            <div className="ai-write-label-row">
+              <label>Report Content</label>
+              <button
+                type="button"
+                className={`btn-ai-write ${aiWriteStatus === "loading" ? "loading" : ""}`}
+                onClick={handleAiWrite}
+                disabled={!imageDataUrl || status === "loading" || aiWriteStatus === "loading"}
+                title={!imageDataUrl ? "Upload an image first to use AI Write" : "Let AI write or improve the report description"}
+              >
+                {aiWriteStatus === "loading" ? "✨ Writing..." : "✨ AI Write"}
+              </button>
+            </div>
+            {mismatchWarning && (
+              <div className="mismatch-warning">
+                ⚠️ {mismatchWarning}
+              </div>
+            )}
+            <div className={`textarea-wrap ${aiWriteStatus === "loading" ? "textarea-shimmer" : ""}`}>
+              <textarea
+                value={text}
+                onChange={(e) => { setText(e.target.value); setMismatchWarning(""); }}
+                placeholder="E.g. Thick black smoke from garbage burning near Boragaon right now! Eyes burning, can't breathe. Add a photo if text is brief."
+                rows={4}
+                disabled={status === "loading" || aiWriteStatus === "loading"}
+              />
+            </div>
           </div>
 
           <div className="form-group">
