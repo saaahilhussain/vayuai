@@ -304,6 +304,8 @@ export default function LiveMap({
   sensorsActive,
   hotspotsActive,
   hotspots = [],
+  predictionsActive,
+  predictionData,
   locationPickActive,
   pickedReportLocation,
   onReportLocationPick,
@@ -455,6 +457,27 @@ export default function LiveMap({
                   <div className="hotspot-radar-ring"></div>
                   <div className="hotspot-radar-center">
                     <span>#{hs.rank}</span>
+                  </div>
+                </div>
+              </AdvancedMarker>
+            );
+          })}
+
+          {/* Forecast Overlays */}
+          {predictionsActive && predictionData?.locations?.map(loc => {
+            const peakColor = loc.hourlyForecast.find(h => h.predictedAQI === loc.peakAQI)?.color || '#fff';
+            return (
+              <AdvancedMarker
+                key={`pred-${loc.id}`}
+                position={{ lat: loc.lat, lng: loc.lng }}
+                zIndex={60}
+              >
+                <div className="forecast-marker" style={{ '--peak-color': peakColor }}>
+                  <div className="forecast-ring"></div>
+                  <div className="forecast-marker-box">
+                    <span className="forecast-val-current">{loc.currentAQI}</span>
+                    <span className="forecast-arrow">→</span>
+                    <span className="forecast-val-peak">{loc.peakAQI}</span>
                   </div>
                 </div>
               </AdvancedMarker>

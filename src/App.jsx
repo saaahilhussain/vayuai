@@ -4,9 +4,11 @@ import LiveFeed from "./components/LiveFeed";
 import AlertBanner from "./components/AlertBanner";
 import AddTweetModal from "./components/AddTweetModal";
 import HotspotPanel from "./components/HotspotPanel";
+import PredictionPanel from "./components/PredictionPanel";
 import {
   fetchEvents,
   fetchHotspots,
+  fetchPredictions,
   createEventStream,
   startSimulation,
   stopSimulation,
@@ -27,7 +29,9 @@ export default function App() {
   const [feedOpen, setFeedOpen] = useState(false);
   const [sensorsActive, setSensorsActive] = useState(true);
   const [hotspotsActive, setHotspotsActive] = useState(false);
+  const [predictionsActive, setPredictionsActive] = useState(false);
   const [hotspots, setHotspots] = useState([]);
+  const [predictionData, setPredictionData] = useState(null);
   const [isPickingReportLocation, setIsPickingReportLocation] = useState(false);
   const [reportLocationCoords, setReportLocationCoords] = useState(null);
 
@@ -43,6 +47,19 @@ export default function App() {
     const interval = setInterval(load, 15000); // 15 seconds
     return () => { cancelled = true; clearInterval(interval); };
   }, [events]); // Also re-fetch if events change rapidly
+
+  // Fetch predictions periodically
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      fetchPredictions().then(data => {
+        if (!cancelled) setPredictionData(data);
+      }).catch(console.error);
+    };
+    load();
+    const interval = setInterval(load, 60000); // 60 seconds
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [events]);
 
   useEffect(() => {
     if ("Notification" in window && Notification.permission === "default") {
@@ -103,6 +120,8 @@ export default function App() {
           sensorsActive={sensorsActive}
           hotspotsActive={hotspotsActive}
           hotspots={hotspots}
+          predictionsActive={predictionsActive}
+          predictionData={predictionData}
           locationPickActive={isPickingReportLocation}
           pickedReportLocation={reportLocationCoords}
           onReportLocationPick={(coords) => {
@@ -158,6 +177,26 @@ export default function App() {
         />
       )}
 
+      {/* Predictions Panel */}
+      {mapOpen && predictionsActive && (
+        <PredictionPanel
+          predictionData={predictionData}
+          onClose={() => setPredictionsActive(false)}
+          onSelectLocation={(loc) => {
+            setSelectedEvent({ 
+              lat: loc.lat, 
+              lng: loc.lng, 
+              locationName: loc.name,
+              severity: loc.hourlyForecast.find(h => h.predictedAQI === loc.peakAQI)?.category.toLowerCase().replace(' ', '-') || 'high',
+              pollutionType: 'smog', // Generic fallback
+              text: `Predicted Peak AQI: ${loc.peakAQI} at ${loc.peakHour}:00. Current AQI: ${loc.currentAQI}.`,
+              timestamp: new Date().toISOString(),
+              _t: Date.now() 
+            });
+          }}
+        />
+      )}
+
       {/* Top right Feed Toggle Button when Map is Open */}
       {mapOpen && (
         <button
@@ -197,6 +236,12 @@ export default function App() {
                 onClick={() => setHotspotsActive(!hotspotsActive)}
               >
                 Hotspots
+              </button>
+              <button
+                className={`cb-btn ${predictionsActive ? "cb-active" : ""}`}
+                onClick={() => setPredictionsActive(!predictionsActive)}
+              >
+                Forecast
               </button>
             </>
           )}

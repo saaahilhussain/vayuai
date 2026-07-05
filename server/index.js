@@ -20,6 +20,7 @@ import { analyzePollutionImage, generateReportDescription } from "./imageAnalysi
 import { SensorGrid } from "./sensorGrid.js";
 import { getCurrentWeather } from "./weatherService.js";
 import { HotspotEngine } from "./hotspotEngine.js";
+import { PredictionEngine } from "./predictionEngine.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -383,6 +384,17 @@ app.get("/api/hotspots", (req, res) => {
   const recentEvents = store.getByTimeRange(now - 6 * 3600 * 1000, now);
   const hotspots = HotspotEngine.generateHotspots(recentEvents, sensorGrid);
   res.json(hotspots);
+});
+
+// --- Predictions ---
+app.get("/api/predictions", async (req, res) => {
+  const now = Date.now();
+  const recentEvents = store.getByTimeRange(now - 48 * 3600 * 1000, now); // 48h lookback for trends
+  const hotspots = HotspotEngine.generateHotspots(store.getByTimeRange(now - 6 * 3600 * 1000, now), sensorGrid);
+  const weather = await getCurrentWeather();
+  
+  const predictions = PredictionEngine.generatePredictions(sensorGrid, recentEvents, weather, hotspots);
+  res.json(predictions);
 });
 
 // --- Custom tweet submission ---

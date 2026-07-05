@@ -41,7 +41,7 @@ citizen report / social post
 | 3. Image-based detection (Gemini Vision) | Photo upload + AI smoke/dust/fire classification | ✅ Done | Upload UI, server image classifier, Gemini confidence shown in feed/map; gracefully reports unavailable analysis when key/config fails |
 | 4. Multi-source fusion | Virtual AQI sensors, duplicate merging, confidence aggregation | ✅ Done | 12 virtual sensors on map; `/api/sensors` returns live readings; duplicate events merge with corroboration count; fusedConfidence shown in feed/popup; sensor pressure feedback loop |
 | 5. Hotspot detection | Spatial clustering, ranked hotspots, hotspot map layer | ✅ Done | `HotspotEngine` uses 500m grid clustering; UI has pulsing radar overlays and sortable side panel |
-| 6. 24h prediction | Explainable AQI forecast (trend + diurnal + event pressure) | ⬜ Not started | — |
+| 6. 24h prediction | Explainable AQI forecast (trend + diurnal + event pressure) | ✅ Done | `/api/predictions` endpoint; live Forecast panel with sparklines & explainability tags; map forecast overlays |
 | 7. Municipal intelligence | Intervention recommendations + AI action brief | ⬜ Not started | — |
 | 8. Accessibility | Voice reporting, multilingual UI | ⏸ Deferred — future work. Note: incoming regional-language reports are already auto-translated (partial Inclusivity coverage today) |
 | 9. Government data | Live CPCB / IMD integration | ✅ Done | Replaced virtual sensor grid with real CPCB data from OpenAQ for Guwahati; IMD weather proxy via Open-Meteo |
@@ -74,7 +74,16 @@ citizen report / social post
 
 ## Next up (awaiting confirmation)
 
-**Phase 6 — Prediction.** Next target: Explainable AQI forecasting over the next 24 hours.
+**Phase 7 — Municipal Intelligence.** Next target: AI-generated municipal action recommendations based on detected hotspots and predicted AQI.
+
+## Phase 6 change log
+
+- `server/predictionEngine.js` [NEW] — Generates 24-hour predictions for all sensors combining diurnal multipliers, historical event trends (48h), weather stagnation/dispersal, and active hotspot pressure. Emphasizes explainability over black-box ML.
+- `server/index.js` — added `GET /api/predictions` endpoint.
+- `src/components/PredictionPanel.jsx` [NEW] — Floating panel listing sensor locations with their predicted peak AQI, 24h sparklines, and explainable AI factors (e.g., "Wind Stagnation", "Escalating Trend").
+- `src/components/PredictionPanel.css` [NEW] — Styles for the prediction panel, sparklines, and impact chips.
+- `src/components/LiveMap.jsx` & `LiveMap.css` — Added pulsing forecast overlays (dashed rings with current → peak AQI values) for sensors.
+- `src/App.jsx` — Added `predictionsActive` state and "Forecast" toggle button in the control bar. Polls predictions every 60s.
 
 ## Phase 5 change log
 

@@ -99,6 +99,11 @@ export async function fetchHotspots() {
   return res.json();
 }
 
+export async function fetchPredictions() {
+  const res = await fetch(`${API_BASE}/predictions`);
+  return res.json();
+}
+
 export function createEventStream(onEvent) {
   const es = new EventSource(`${API_BASE}/events/stream`);
   es.onmessage = (e) => {
