@@ -111,15 +111,23 @@ function validateManualImageReport({ text, nlp, imageAnalysis }) {
   if (!meaningfulText) return null;
 
   if (imageAnalysis.textImageMatch === false) {
-    return imageAnalysis.mismatchReason ||
-      "The report description and uploaded image do not appear related. Please upload relevant data that describes the same incident.";
+    return (
+      imageAnalysis.mismatchReason ||
+      "The report description and uploaded image do not appear related. Please upload relevant data that describes the same incident."
+    );
   }
 
-  if (nlp.isPollution && !isCompatiblePollutionType(nlp.pollutionType, imageAnalysis.pollutionType)) {
+  if (
+    nlp.isPollution &&
+    !isCompatiblePollutionType(nlp.pollutionType, imageAnalysis.pollutionType)
+  ) {
     return "The report description and uploaded image describe different pollution types. Please make the text and photo refer to the same incident.";
   }
 
-  if (!nlp.isPollution && UNRELATED_REPORT_PATTERNS.some((pattern) => pattern.test(text))) {
+  if (
+    !nlp.isPollution &&
+    UNRELATED_REPORT_PATTERNS.some((pattern) => pattern.test(text))
+  ) {
     return "The report description and uploaded image do not appear related. Please upload relevant data that describes the same incident.";
   }
 
@@ -179,7 +187,8 @@ async function processTweetDetailed(tweet) {
   if (!nlp.isPollution && !hasVisionPollution) {
     return {
       event: null,
-      reason: analysisUnavailableReason(imageAnalysis) ||
+      reason:
+        analysisUnavailableReason(imageAnalysis) ||
         "No pollution indicators detected in text or image",
       nlp,
       imageAnalysis,
@@ -238,29 +247,29 @@ async function processTweetDetailed(tweet) {
 
   return {
     event: {
-    id: tweet.id,
-    text: tweet.text, // original text
-    translatedText: isTranslated ? translatedText : null, // keep translation if not English
-    handle: tweet.handle,
-    source: tweet.source,
-    timestamp: tweet.timestamp,
-    pollutionType,
-    severity,
-    severityLevel,
-    locations: nlp.locations.length > 0 ? nlp.locations : [geo.matchedName],
-    locationName: geo.matchedName || nlp.locations[0],
-    state: geo.state,
-    lat: submittedCoords ? submittedCoords.lat : jitter(geo.lat),
-    lng: submittedCoords ? submittedCoords.lng : jitter(geo.lng),
-    locationSource: submittedCoords ? "user_pin" : "geocoded_text",
-    confidence,
-    affectedCount: nlp.affectedCount,
-    relevancyScore: nlp.relevancyScore,
-    relevancyBreakdown: nlp.relevancyBreakdown,
-    engagement: tweet.engagement || {},
-    imageUrl: tweet.imageUrl || tweet.imageDataUrl || null,
-    imageMeta: tweet.imageMeta || null,
-    imageAnalysis,
+      id: tweet.id,
+      text: tweet.text, // original text
+      translatedText: isTranslated ? translatedText : null, // keep translation if not English
+      handle: tweet.handle,
+      source: tweet.source,
+      timestamp: tweet.timestamp,
+      pollutionType,
+      severity,
+      severityLevel,
+      locations: nlp.locations.length > 0 ? nlp.locations : [geo.matchedName],
+      locationName: geo.matchedName || nlp.locations[0],
+      state: geo.state,
+      lat: submittedCoords ? submittedCoords.lat : jitter(geo.lat),
+      lng: submittedCoords ? submittedCoords.lng : jitter(geo.lng),
+      locationSource: submittedCoords ? "user_pin" : "geocoded_text",
+      confidence,
+      affectedCount: nlp.affectedCount,
+      relevancyScore: nlp.relevancyScore,
+      relevancyBreakdown: nlp.relevancyBreakdown,
+      engagement: tweet.engagement || {},
+      imageUrl: tweet.imageUrl || tweet.imageDataUrl || null,
+      imageMeta: tweet.imageMeta || null,
+      imageAnalysis,
     },
     reason: null,
     nlp,
@@ -328,7 +337,8 @@ app.get("/api/locations", (req, res) => {
 
 // --- Custom tweet submission ---
 app.post("/api/tweet", async (req, res) => {
-  const { text, handle, location, imageDataUrl, imageMeta, locationCoords } = req.body;
+  const { text, handle, location, imageDataUrl, imageMeta, locationCoords } =
+    req.body;
   const trimmedText = typeof text === "string" ? text.trim() : "";
   const hasImage = typeof imageDataUrl === "string" && imageDataUrl.length > 0;
   if (!trimmedText && !hasImage) {
@@ -397,7 +407,7 @@ async function seedHistoricalData() {
       seeded++;
     }
     // Small delay to avoid hammering the translation API
-    await new Promise(r => setTimeout(r, 150));
+    await new Promise((r) => setTimeout(r, 150));
   }
   console.log(`📊 Seeded ${seeded} historical events`);
 }
@@ -448,7 +458,10 @@ const distPath = path.join(__dirname, "..", "dist");
 app.use(express.static(distPath));
 
 // Serve images from public folder
-app.use("/images", express.static(path.join(__dirname, "..", "public", "images")));
+app.use(
+  "/images",
+  express.static(path.join(__dirname, "..", "public", "images")),
+);
 
 // SPA catch-all — must be after all API routes
 app.get("/*splat", (req, res) => {

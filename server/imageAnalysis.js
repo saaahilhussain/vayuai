@@ -114,7 +114,9 @@ async function analyzePollutionImage(dataUrl, context = {}) {
 
   const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const locationText = context.location ? `Location hint: ${context.location}.` : "";
+  const locationText = context.location
+    ? `Location hint: ${context.location}.`
+    : "";
   const reportText = context.text ? `Citizen text: ${context.text}` : "";
 
   const prompt = `
@@ -183,7 +185,10 @@ JSON schema:
 
     if (!response.ok) {
       const body = await response.text();
-      return unavailable(`Gemini request failed: ${response.status} ${body}`, context);
+      return unavailable(
+        `Gemini request failed: ${response.status} ${body}`,
+        context,
+      );
     }
 
     const payload = await response.json();

@@ -36,7 +36,7 @@ export default function AddTweetModal({
   const [status, setStatus] = useState("idle"); // idle, loading, success, error
   const [message, setMessage] = useState("");
   const hasReportInput = text.trim().length > 0 || Boolean(imageDataUrl);
-  
+
   const [allLocations, setAllLocations] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -49,7 +49,9 @@ export default function AddTweetModal({
   const requestBrowserLocation = useCallback(() => {
     if (!navigator.geolocation) {
       setLocationStatus("manual");
-      setMessage("Location detection is unavailable. Pin the report location on the map.");
+      setMessage(
+        "Location detection is unavailable. Pin the report location on the map.",
+      );
       return;
     }
 
@@ -63,7 +65,9 @@ export default function AddTweetModal({
         if (!isInsideGuwahati(coords.lat, coords.lng)) {
           setLocationCoords(null);
           setLocationStatus("manual");
-          setMessage("Detected location is outside Guwahati. Pin the report location on the map.");
+          setMessage(
+            "Detected location is outside Guwahati. Pin the report location on the map.",
+          );
           return;
         }
         setLocationCoords(coords);
@@ -73,7 +77,9 @@ export default function AddTweetModal({
       },
       () => {
         setLocationStatus("manual");
-        setMessage("Could not detect location. Pin the report location on the map.");
+        setMessage(
+          "Could not detect location. Pin the report location on the map.",
+        );
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
     );
@@ -114,7 +120,9 @@ export default function AddTweetModal({
       setLocationStatus("manual");
     }
     if (val.length > 0) {
-      const filtered = allLocations.filter(loc => loc.toLowerCase().includes(val.toLowerCase()));
+      const filtered = allLocations.filter((loc) =>
+        loc.toLowerCase().includes(val.toLowerCase()),
+      );
       setSuggestions(filtered);
       setShowSuggestions(true);
     } else {
@@ -194,7 +202,9 @@ export default function AddTweetModal({
     if (!hasReportInput) return;
     if (!location.trim() && !locationCoords) {
       setStatus("error");
-      setMessage("Add a location by detecting your position, selecting a locality, or pinning the report on the map.");
+      setMessage(
+        "Add a location by detecting your position, selecting a locality, or pinning the report on the map.",
+      );
       return;
     }
 
@@ -239,7 +249,9 @@ export default function AddTweetModal({
           <strong>Pick report location</strong>
           <span>Click the main map to place the report pin.</span>
         </div>
-        <button type="button" onClick={onCancelPinLocation}>Back</button>
+        <button type="button" onClick={onCancelPinLocation}>
+          Back
+        </button>
       </div>
     );
   }
@@ -270,7 +282,11 @@ export default function AddTweetModal({
             />
           </div>
 
-          <div className="form-group" ref={wrapperRef} style={{ position: "relative" }}>
+          <div
+            className="form-group"
+            ref={wrapperRef}
+            style={{ position: "relative" }}
+          >
             <label>Location</label>
             <input
               type="text"
@@ -298,13 +314,18 @@ export default function AddTweetModal({
                 type="button"
                 className="btn-location"
                 onClick={requestBrowserLocation}
-                disabled={status === "loading" || locationStatus === "detecting"}
+                disabled={
+                  status === "loading" || locationStatus === "detecting"
+                }
               >
-                {locationStatus === "detecting" ? "Detecting..." : "Use my location"}
+                {locationStatus === "detecting"
+                  ? "Detecting..."
+                  : "Use my location"}
               </button>
               {locationCoords && (
                 <span className="location-coords">
-                  {locationCoords.lat.toFixed(4)}, {locationCoords.lng.toFixed(4)}
+                  {locationCoords.lat.toFixed(4)},{" "}
+                  {locationCoords.lng.toFixed(4)}
                 </span>
               )}
             </div>
@@ -359,7 +380,11 @@ export default function AddTweetModal({
 
           {message && (
             <div className={`status-message ${status}`}>
-              {status === "success" ? "OK: " : status === "error" ? "Rejected: " : ""}
+              {status === "success"
+                ? "OK: "
+                : status === "error"
+                  ? "Rejected: "
+                  : ""}
               {message}
             </div>
           )}
