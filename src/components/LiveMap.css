@@ -252,3 +252,79 @@
 .gm-ui-hover-effect span {
   background-color: #fff !important;
 }
+
+/* Sensor markers */
+.sensor-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.75);
+  border: 2px solid var(--sensor-color, #facc15);
+  box-shadow: 0 0 12px var(--sensor-color, rgba(250, 204, 21, 0.4)),
+              0 2px 8px rgba(0, 0, 0, 0.5);
+  cursor: default;
+  transition: transform 0.15s ease;
+}
+
+.sensor-marker:hover {
+  transform: scale(1.15);
+}
+
+.sensor-marker-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sensor-color, #facc15);
+  line-height: 1;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.sensor-marker-label {
+  font-size: 7px;
+  font-weight: 600;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+/* Fusion data in popup */
+.mtp-fusion {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.mtp-fused-badge,
+.mtp-corr-badge,
+.mtp-sensor-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 100px;
+}
+
+.mtp-fused-badge {
+  background: rgba(167, 139, 250, 0.12);
+  color: #a78bfa;
+}
+
+.mtp-corr-badge {
+  background: rgba(52, 211, 153, 0.12);
+  color: #34d399;
+}
+
+.mtp-sensor-badge {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+}
+
+.mtp-has-image .mtp-fusion {
+  padding-left: 16px;
+  padding-right: 16px;
+}

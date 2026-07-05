@@ -17,6 +17,8 @@ import {
 import { generateTweet, generateHistoricalBatch } from "./fakeData.js";
 import { EventStore } from "./eventStore.js";
 import { analyzePollutionImage, generateReportDescription } from "./imageAnalysis.js";
+import { SensorGrid } from "./sensorGrid.js";
+import { getCurrentWeather } from "./weatherService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,6 +30,7 @@ app.use(cors());
 app.use(express.json({ limit: "8mb" }));
 
 const store = new EventStore(500);
+const sensorGrid = new SensorGrid();
 const sseClients = [];
 
 const TARGET_IMAGE_TYPES = new Set([
@@ -243,6 +246,32 @@ async function processTweetDetailed(tweet) {
     hasVisionPollution ? imageAnalysis.confidence || 0 : 0,
   );
 
+  // --- Sensor corroboration ---
+  const eventLat = submittedCoords ? submittedCoords.lat : jitter(geo.lat);
+  const eventLng = submittedCoords ? submittedCoords.lng : jitter(geo.lng);
+  const nearestSensor = sensorGrid.getNearestSensor(eventLat, eventLng);
+  let sensorCorroboration = null;
+  if (nearestSensor && nearestSensor.distanceKm <= 3.0) {
+    sensorCorroboration = {
+      sensorId: nearestSensor.id,
+      sensorName: nearestSensor.name,
+      aqi: nearestSensor.aqi,
+      category: nearestSensor.category,
+      distanceKm: nearestSensor.distanceKm,
+      corroborates: nearestSensor.aqi > 150,
+    };
+  }
+
+  // --- Fused confidence ---
+  const nlpConf = nlp.confidence || 0;
+  const imgConf = hasVisionPollution ? (imageAnalysis.confidence || 0) : 0;
+  const sensorConf = sensorCorroboration?.corroborates ? Math.min(1.0, nearestSensor.aqi / 400) : 0;
+  // Corroboration signal will be added by EventStore.add() during merge
+  const fusedConfidence = Math.min(
+    1.0,
+    nlpConf * 0.35 + imgConf * 0.30 + sensorConf * 0.20 + confidence * 0.15,
+  );
+
   return {
     event: {
       id: tweet.id,
@@ -257,10 +286,12 @@ async function processTweetDetailed(tweet) {
       locations: nlp.locations.length > 0 ? nlp.locations : [geo.matchedName],
       locationName: geo.matchedName || nlp.locations[0],
       state: geo.state,
-      lat: submittedCoords ? submittedCoords.lat : jitter(geo.lat),
-      lng: submittedCoords ? submittedCoords.lng : jitter(geo.lng),
+      lat: eventLat,
+      lng: eventLng,
       locationSource: submittedCoords ? "user_pin" : "geocoded_text",
       confidence,
+      fusedConfidence: Math.round(fusedConfidence * 100) / 100,
+      sensorCorroboration,
       affectedCount: nlp.affectedCount,
       relevancyScore: nlp.relevancyScore,
       relevancyBreakdown: nlp.relevancyBreakdown,
@@ -333,6 +364,17 @@ app.get("/api/locations", (req, res) => {
   );
 });
 
+// --- Sensor readings ---
+app.get("/api/sensors", (req, res) => {
+  res.json(sensorGrid.getSensorReadings());
+});
+
+// --- Weather (Public Data) ---
+app.get("/api/weather", async (req, res) => {
+  const weather = await getCurrentWeather();
+  res.json(weather);
+});
+
 // --- Custom tweet submission ---
 app.post("/api/tweet", async (req, res) => {
   const { text, handle, location, imageDataUrl, imageMeta, locationCoords } =
@@ -370,12 +412,14 @@ app.post("/api/tweet", async (req, res) => {
     });
   }
 
-  store.add(event);
-  broadcastEvent(event);
+  const storedEvent = store.add(event);
+  // Register with sensor grid for pressure feedback
+  sensorGrid.registerReport(storedEvent.lat, storedEvent.lng, storedEvent.severityLevel || 1);
+  broadcastEvent(storedEvent);
 
   res.json({
     accepted: true,
-    event,
+    event: storedEvent,
   });
 });
 
@@ -405,9 +449,10 @@ app.post("/api/simulate", async (req, res) => {
     const tweet = generateTweet();
     const event = await processTweet(tweet);
     if (event) {
-      store.add(event);
-      broadcastEvent(event);
-      events.push(event);
+      const stored = store.add(event);
+      sensorGrid.registerReport(stored.lat, stored.lng, stored.severityLevel || 1);
+      broadcastEvent(stored);
+      events.push(stored);
     }
   }
   res.json({ generated: events.length, events });
@@ -420,13 +465,14 @@ async function seedHistoricalData() {
   for (const tweet of historicalTweets) {
     const event = await processTweet(tweet);
     if (event) {
-      store.add(event);
+      const stored = store.add(event);
+      sensorGrid.registerReport(stored.lat, stored.lng, stored.severityLevel || 1);
       seeded++;
     }
     // Small delay to avoid hammering the translation API
     await new Promise((r) => setTimeout(r, 150));
   }
-  console.log(`📊 Seeded ${seeded} historical events`);
+  console.log(`📊 Seeded ${seeded} historical events (${store.duplicatesMerged} duplicates merged)`);
 }
 
 // --- Auto-generate tweets at intervals ---
@@ -439,8 +485,9 @@ async function startSimulation() {
     const tweet = generateTweet();
     const event = await processTweet(tweet);
     if (event) {
-      store.add(event);
-      broadcastEvent(event);
+      const stored = store.add(event);
+      sensorGrid.registerReport(stored.lat, stored.lng, stored.severityLevel || 1);
+      broadcastEvent(stored);
     }
   }, simulationSpeed);
   console.log(`▶️  Simulation started (interval: ${simulationSpeed}ms)`);

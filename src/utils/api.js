@@ -89,6 +89,11 @@ export async function fetchLocations() {
   return res.json();
 }
 
+export async function fetchSensors() {
+  const res = await fetch(`${API_BASE}/sensors`);
+  return res.json();
+}
+
 export function createEventStream(onEvent) {
   const es = new EventSource(`${API_BASE}/events/stream`);
   es.onmessage = (e) => {

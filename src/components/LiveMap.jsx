@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap, MapControl, ControlPosition } from "@vis.gl/react-google-maps";
-import { POLLUTION_TYPES, timeAgo } from "../utils/api";
+import { POLLUTION_TYPES, timeAgo, fetchSensors } from "../utils/api";
 import "./LiveMap.css";
 
 const GUWAHATI_CENTER = { lat: 26.15, lng: 91.75 };
@@ -181,6 +181,25 @@ const CustomInfoWindow = ({ event, onClose }) => {
           <p>{visionSummary}</p>
         </div>
       )}
+      {(event.fusedConfidence > 0 || event.corroborationCount > 1 || event.sensorCorroboration) && (
+        <div className="mtp-fusion">
+          {event.fusedConfidence > 0 && (
+            <span className="mtp-fused-badge">
+              Fused: {Math.round(event.fusedConfidence * 100)}%
+            </span>
+          )}
+          {event.corroborationCount > 1 && (
+            <span className="mtp-corr-badge">
+              {event.corroborationCount} sources
+            </span>
+          )}
+          {event.sensorCorroboration?.corroborates && (
+            <span className="mtp-sensor-badge">
+              📡 AQI {event.sensorCorroboration.aqi} ({event.sensorCorroboration.sensorName})
+            </span>
+          )}
+        </div>
+      )}
       <div className="mtp-engagement">
         <span>{ICON_REPLY} {engagement.replies || 0}</span>
         <span>{ICON_HEART} {engagement.likes || 0}</span>
@@ -282,6 +301,7 @@ export default function LiveMap({
   heatmapActive,
   selectedEvent,
   isDarkMode,
+  sensorsActive,
   locationPickActive,
   pickedReportLocation,
   onReportLocationPick,
@@ -290,8 +310,23 @@ export default function LiveMap({
   const [selectedMarker, setSelectedMarker] = useState(null);
   const [mapCenter, setMapCenter] = useState(GUWAHATI_CENTER);
   const [mapZoom, setMapZoom] = useState(12);
+  const [sensors, setSensors] = useState([]);
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const tokenMissing = !apiKey || apiKey === "your_token_here";
+
+  // Fetch sensor data periodically when sensors are active
+  useEffect(() => {
+    if (!sensorsActive) return;
+    let cancelled = false;
+    const load = () => {
+      fetchSensors().then((data) => {
+        if (!cancelled) setSensors(data);
+      }).catch(() => {});
+    };
+    load();
+    const interval = setInterval(load, 30000); // refresh every 30s
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [sensorsActive]);
 
   useEffect(() => {
     if (selectedEvent && selectedEvent.lat && selectedEvent.lng) {
@@ -383,6 +418,24 @@ export default function LiveMap({
               <Pin background={"#000000"} borderColor={"#ffffff"} glyphColor={"#ffffff"} />
             </AdvancedMarker>
           )}
+
+          {/* Sensor markers */}
+          {sensorsActive && sensors.map(sensor => (
+            <AdvancedMarker
+              key={sensor.id}
+              position={{ lat: sensor.lat, lng: sensor.lng }}
+              zIndex={50}
+            >
+              <div
+                className="sensor-marker"
+                style={{ '--sensor-color': sensor.color }}
+                title={`${sensor.name}\nAQI: ${sensor.aqi} (${sensor.category})\nPM2.5: ${sensor.pm25} · PM10: ${sensor.pm10}`}
+              >
+                <span className="sensor-marker-value">{sensor.aqi}</span>
+                <span className="sensor-marker-label">AQI</span>
+              </div>
+            </AdvancedMarker>
+          ))}
 
           {selectedMarker && (
             <InfoWindow

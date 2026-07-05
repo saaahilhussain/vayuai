@@ -43,6 +43,30 @@ export default function LiveFeed({ events, onSelectEvent, onClose, isSidebar = f
               <span className="feed-item-type">
                 {POLLUTION_TYPES[event.pollutionType]?.label || 'Unknown'}
               </span>
+              {event.fusedConfidence > 0 && (
+                <>
+                  <span className="feed-item-sep">·</span>
+                  <span className="feed-item-fused">
+                    {Math.round(event.fusedConfidence * 100)}% conf
+                  </span>
+                </>
+              )}
+              {event.corroborationCount > 1 && (
+                <>
+                  <span className="feed-item-sep">·</span>
+                  <span className="feed-item-corroboration">
+                    {event.corroborationCount} sources
+                  </span>
+                </>
+              )}
+              {event.sensorCorroboration?.corroborates && (
+                <>
+                  <span className="feed-item-sep">·</span>
+                  <span className="feed-item-sensor">
+                    AQI {event.sensorCorroboration.aqi}
+                  </span>
+                </>
+              )}
               {event.imageAnalysis?.available && (
                 <>
                   <span className="feed-item-sep">·</span>

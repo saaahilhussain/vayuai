@@ -23,6 +23,7 @@ export default function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
+  const [sensorsActive, setSensorsActive] = useState(true);
   const [isPickingReportLocation, setIsPickingReportLocation] = useState(false);
   const [reportLocationCoords, setReportLocationCoords] = useState(null);
 
@@ -82,6 +83,7 @@ export default function App() {
           heatmapActive={heatmapActive}
           selectedEvent={selectedEvent}
           isDarkMode={isDarkMode}
+          sensorsActive={sensorsActive}
           locationPickActive={isPickingReportLocation}
           pickedReportLocation={reportLocationCoords}
           onReportLocationPick={(coords) => {
@@ -138,12 +140,20 @@ export default function App() {
             {isLive ? "Live" : "Paused"}
           </button>
           {mapOpen && (
-            <button
-              className={`cb-btn ${heatmapActive ? "cb-active" : ""}`}
-              onClick={() => setHeatmapActive(!heatmapActive)}
-            >
-              Heatmap
-            </button>
+            <>
+              <button
+                className={`cb-btn ${heatmapActive ? "cb-active" : ""}`}
+                onClick={() => setHeatmapActive(!heatmapActive)}
+              >
+                Heatmap
+              </button>
+              <button
+                className={`cb-btn ${sensorsActive ? "cb-active" : ""}`}
+                onClick={() => setSensorsActive(!sensorsActive)}
+              >
+                Sensors
+              </button>
+            </>
           )}
           <button
             className={`cb-btn ${!mapOpen ? "cb-active" : ""}`}

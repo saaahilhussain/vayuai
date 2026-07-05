@@ -213,3 +213,21 @@
   object-fit: cover;
   display: block;
 }
+
+/* Fused confidence */
+.feed-item-fused {
+  color: #a78bfa;
+  font-weight: 600;
+}
+
+/* Corroboration badge */
+.feed-item-corroboration {
+  color: #34d399;
+  font-weight: 600;
+}
+
+/* Sensor AQI indicator */
+.feed-item-sensor {
+  color: #fbbf24;
+  font-weight: 600;
+}

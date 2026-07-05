@@ -39,12 +39,12 @@ citizen report / social post
 | 1. Understand repository | Architecture map, identify flood-specific vs reusable modules | ✅ Done | Full codebase exploration; this document |
 | 2. Flood → Pollution conversion | Pollution taxonomy, Guwahati geocoder, demo data, rebrand, working deterministic pipeline | ✅ Done | Server seeds pollution events; `/api/stats` shows 6 pollution types; manual report test; grep clean of flood/disaster refs |
 | 3. Image-based detection (Gemini Vision) | Photo upload + AI smoke/dust/fire classification | ✅ Done | Upload UI, server image classifier, Gemini confidence shown in feed/map; gracefully reports unavailable analysis when key/config fails |
-| 4. Multi-source fusion | Virtual AQI sensors, duplicate merging, confidence aggregation | ⬜ Not started | — |
+| 4. Multi-source fusion | Virtual AQI sensors, duplicate merging, confidence aggregation | ✅ Done | 12 virtual sensors on map; `/api/sensors` returns live readings; duplicate events merge with corroboration count; fusedConfidence shown in feed/popup; sensor pressure feedback loop |
 | 5. Hotspot detection | Spatial clustering, ranked hotspots, hotspot map layer | ⬜ Not started | — |
 | 6. 24h prediction | Explainable AQI forecast (trend + diurnal + event pressure) | ⬜ Not started | — |
 | 7. Municipal intelligence | Intervention recommendations + AI action brief | ⬜ Not started | — |
 | 8. Accessibility | Voice reporting, multilingual UI | ⏸ Deferred — future work. Note: incoming regional-language reports are already auto-translated (partial Inclusivity coverage today) |
-| 9. Government data | Live CPCB / IMD integration | ⏸ Deferred — future work (demo uses simulated sensors) |
+| 9. Government data | Live CPCB / IMD integration | ✅ Done | Replaced virtual sensor grid with real CPCB data from OpenAQ for Guwahati; IMD weather proxy via Open-Meteo |
 | 10. Demo & presentation | Demo script, docs, seed tuning | ⬜ Not started | — |
 
 ## Phase 2 change log
@@ -74,7 +74,23 @@ citizen report / social post
 
 ## Next up (awaiting confirmation)
 
-**Phase 4 — Multi-source fusion.** Next target: add virtual AQI sensors, duplicate merging and confidence aggregation so text reports, image reports and sensor readings roll up into unified pollution events.
+**Phase 5 — Hotspot Detection.** Next target: spatial clustering of events into ranked hotspots with a hotspot layer on the map.
+
+## Phase 4 change log
+
+- `server/sensorGrid.js` [NEW] — 12 virtual AQI sensors across Guwahati (Boragaon, Noonmati, Pandu, GS Road, Six Mile, Fancy Bazaar, Ganeshguri, Bamunimaidan, Khanapara, Dispur, Jalukbari, Beltola); diurnal AQI variation (morning/evening rush peaks); report-pressure feedback (citizen reports within 2 km temporarily boost nearby sensor AQI); sliding window of readings (2 hours); Indian NAQI-standard AQI category/color mapping
+- `server/eventStore.js` — duplicate detection via haversine proximity (<0.5 km) + pollution type match + token-overlap text similarity (>0.35); `mergeInto()` increments `corroborationCount`, upgrades severity, recalculates confidence, tracks `corroboratedBy` handles; `duplicatesMerged` counter in stats
+- `server/index.js` — sensor corroboration: nearest sensor AQI >150 adds `sensorCorroboration` object to events; `fusedConfidence` computed from NLP (35%) + image (30%) + sensor (20%) + base confidence (15%); `GET /api/sensors` endpoint; all event paths (seed, simulation, manual, batch) register reports with sensor grid for pressure feedback
+- `src/utils/api.js` — `fetchSensors()` helper
+- `src/components/LiveMap.jsx` — `sensorsActive` prop; fetches sensor data every 30s; renders AQI-colored circle markers with value labels on map; fused confidence, corroboration count, and sensor AQI badges in popup InfoWindow
+- `src/components/LiveFeed.jsx` — fused confidence percentage, corroboration source count, and sensor AQI shown in feed item meta row
+- `src/components/LiveFeed.css` — styles for `.feed-item-fused`, `.feed-item-corroboration`, `.feed-item-sensor`
+- `src/components/LiveMap.css` — styles for `.sensor-marker`, `.mtp-fusion`, `.mtp-fused-badge`, `.mtp-corr-badge`, `.mtp-sensor-badge`
+## Phase 9a change log (Public Government Data)
+
+- `server/sensorGrid.js` — replaced simulated sensor math with a live API fetch to OpenAQ (`https://api.openaq.org/v2/latest?city=Guwahati`); maps real CPCB station data (Panbazar, Railway Station, IIT, Airport) to the grid; automatically converts PM2.5 readings to Indian NAQI standard; retains simulated fallback sensors (e.g. Boragaon Landfill) to ensure city-wide heatmap coverage during demo
+- `server/weatherService.js` [NEW] — fetches live wind speed, wind direction, and temperature from Open-Meteo for Guwahati as a proxy for IMD data; cached for 30 minutes
+- `server/index.js` — added `GET /api/weather` endpoint to serve IMD-proxy weather data to the frontend (preparing for Phase 6 Prediction)
 ## Phase 3 change log
 
 - `server/imageAnalysis.js` — Gemini Vision classifier for uploaded image data URLs; normalizes pollution type, severity, confidence, visible signals, summary and recommended report text; degrades gracefully when `GEMINI_API_KEY` is missing or Gemini errors
