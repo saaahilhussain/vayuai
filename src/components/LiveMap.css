@@ -351,6 +351,7 @@
 .mtp-has-image .mtp-header,
 .mtp-has-image .mtp-text,
 .mtp-has-image .mtp-meta,
+.mtp-has-image .mtp-vision,
 .mtp-has-image .mtp-engagement {
   padding-left: 16px;
   padding-right: 16px;
@@ -373,4 +374,32 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.mtp-vision {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  color: #8ddcff;
+  font-size: 11px;
+  background: rgba(56, 189, 248, 0.08);
+  border-top: 1px solid rgba(56, 189, 248, 0.12);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.12);
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.mtp-vision span {
+  font-weight: 600;
+}
+
+.mtp-vision strong {
+  font-size: 11px;
+}
+
+.mtp-vision p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #b8e7ff;
+  line-height: 1.35;
 }

@@ -17,12 +17,12 @@ export default function App() {
   const [displayEvents, setDisplayEvents] = useState([]);
   const [isLive, setIsLive] = useState(true);
   const [heatmapActive, setHeatmapActive] = useState(false);
-  const [speed, setSpeed] = useState(8000);
+  const [speed] = useState(8000);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [criticalAlert, setCriticalAlert] = useState(null);
   const [timelineActive, setTimelineActive] = useState(false);
   const [timeRange, setTimeRange] = useState(null);
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const isDarkMode = true;
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
 
@@ -45,6 +45,11 @@ export default function App() {
         const updated = [...prev, event];
         return updated.slice(-500);
       });
+      setDisplayEvents((prev) => {
+        if (timeRange) return prev;
+        const updated = [...prev, event];
+        return updated.slice(-500);
+      });
 
       if (event.severity === "critical") {
         setCriticalAlert(event);
@@ -52,13 +57,7 @@ export default function App() {
     });
 
     return () => es.close();
-  }, []);
-
-  useEffect(() => {
-    if (!timeRange) {
-      setDisplayEvents(events);
-    }
-  }, [events, timeRange]);
+  }, [timeRange]);
 
   const handleToggleLive = async () => {
     if (isLive) {
@@ -67,13 +66,6 @@ export default function App() {
     } else {
       await startSimulation(speed);
       setIsLive(true);
-    }
-  };
-
-  const handleSpeedChange = async (newSpeed) => {
-    setSpeed(newSpeed);
-    if (isLive) {
-      await startSimulation(newSpeed);
     }
   };
 

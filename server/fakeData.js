@@ -25,12 +25,6 @@ const HANDLES = [
 const SOURCES = ["twitter", "twitter", "twitter", "reddit"];
 
 // Images available for image tweets (served from /images/)
-const IMAGE_URLS = [
-  "/images/smoke1.jpeg",
-  "/images/dust1.jpeg",
-  "/images/burning1.jpeg",
-];
-
 const TWEET_TEMPLATES = [
   // ===== GARBAGE BURNING (Boragaon dump narrative + street burning) =====
   {

@@ -6,8 +6,11 @@ export default function AddTweetModal({ onClose }) {
   const [text, setText] = useState("");
   const [handle, setHandle] = useState("@citizen");
   const [location, setLocation] = useState("");
+  const [imageDataUrl, setImageDataUrl] = useState(null);
+  const [imageMeta, setImageMeta] = useState(null);
   const [status, setStatus] = useState("idle"); // idle, loading, success, error
   const [message, setMessage] = useState("");
+  const hasReportInput = text.trim().length > 0 || Boolean(imageDataUrl);
   
   const [allLocations, setAllLocations] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
@@ -45,19 +48,89 @@ export default function AddTweetModal({ onClose }) {
     setShowSuggestions(false);
   };
 
+  const resizeImage = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const maxSide = 1280;
+          const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.82));
+        };
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleImageChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setImageDataUrl(null);
+      setImageMeta(null);
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      setStatus("error");
+      setMessage("Please select an image file.");
+      return;
+    }
+
+    setStatus("loading");
+    setMessage("Preparing image...");
+    try {
+      const resized = await resizeImage(file);
+      setImageDataUrl(resized);
+      setImageMeta({
+        filename: file.name,
+        mimeType: "image/jpeg",
+        originalMimeType: file.type,
+        originalSize: file.size,
+        capturedAt: file.lastModified
+          ? new Date(file.lastModified).toISOString()
+          : null,
+        uploadedAt: new Date().toISOString(),
+      });
+      setStatus("idle");
+      setMessage("");
+    } catch {
+      setStatus("error");
+      setMessage("Could not prepare the selected image.");
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!text.trim()) return;
+    if (!hasReportInput) return;
 
     setStatus("loading");
     setMessage("");
 
     try {
-      const response = await postCustomTweet(text, handle, location);
+      const response = await postCustomTweet(
+        text,
+        handle,
+        location,
+        imageDataUrl,
+        imageMeta,
+      );
 
       if (response.accepted) {
         setStatus("success");
-        setMessage("Report submitted and verified!");
+        const vision = response.event?.imageAnalysis;
+        setMessage(
+          vision?.available
+            ? `Report submitted. Gemini detected ${vision.pollutionType.replaceAll("_", " ")} (${Math.round(vision.confidence * 100)}%).`
+            : "Report submitted and verified!",
+        );
         setTimeout(() => {
           onClose();
         }, 1500);
@@ -65,7 +138,7 @@ export default function AddTweetModal({ onClose }) {
         setStatus("error");
         setMessage(`Rejected: ${response.reason}`);
       }
-    } catch (err) {
+    } catch {
       setStatus("error");
       setMessage("Failed to connect to the server.");
     }
@@ -124,16 +197,43 @@ export default function AddTweetModal({ onClose }) {
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="E.g. Thick black smoke from garbage burning near Boragaon right now! Eyes burning, can't breathe."
+              placeholder="E.g. Thick black smoke from garbage burning near Boragaon right now! Eyes burning, can't breathe. Add a photo if text is brief."
               rows={4}
-              required
               disabled={status === "loading"}
             />
           </div>
 
+          <div className="form-group">
+            <label>Photo Evidence (Optional)</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              disabled={status === "loading"}
+            />
+            {imageDataUrl && (
+              <div className="image-preview">
+                <img src={imageDataUrl} alt="Selected pollution evidence" />
+                <div className="image-preview-meta">
+                  <span>{imageMeta?.filename}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageDataUrl(null);
+                      setImageMeta(null);
+                    }}
+                    disabled={status === "loading"}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {message && (
             <div className={`status-message ${status}`}>
-              {status === "success" ? "✅ " : "❌ "}
+              {status === "success" ? "✅ " : status === "error" ? "❌ " : ""}
               {message}
             </div>
           )}
@@ -150,9 +250,13 @@ export default function AddTweetModal({ onClose }) {
             <button
               type="submit"
               className="btn-submit"
-              disabled={status === "loading" || !text.trim()}
+              disabled={status === "loading" || !hasReportInput}
             >
-              {status === "loading" ? "Processing..." : "Submit Report"}
+              {status === "loading"
+                ? "Processing..."
+                : imageDataUrl
+                  ? "Analyze & Submit"
+                  : "Submit Report"}
             </button>
           </div>
         </form>

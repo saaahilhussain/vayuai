@@ -663,7 +663,6 @@ function scoreEngagement(metrics = {}) {
   }
 
   const signals = [];
-  let score = 0;
 
   const { likes = 0, retweets = 0, replies = 0, views = 0 } = metrics;
 
@@ -673,7 +672,7 @@ function scoreEngagement(metrics = {}) {
   const replyScore = replies > 0 ? Math.min(Math.log10(replies + 1) / 4, 0.2) : 0;
   const viewScore = views > 0 ? Math.min(Math.log10(views + 1) / 6, 0.15) : 0;
 
-  score = rtScore + likeScore + replyScore + viewScore;
+  let score = rtScore + likeScore + replyScore + viewScore;
 
   // Engagement velocity boost: high engagement on recent content = breaking news
   const totalEngagement = likes + retweets + replies;
@@ -723,10 +722,10 @@ const SOURCE_TRUST = {
 
 function scoreSourceCredibility(handle, accountMeta = {}) {
   const signals = [];
-  let score = 0;
 
   // Known handle trust
   const knownTrust = SOURCE_TRUST[handle];
+  let score;
   if (knownTrust !== undefined) {
     score = knownTrust;
     if (knownTrust >= 0.90) signals.push("official");

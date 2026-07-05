@@ -176,6 +176,11 @@
   text-transform: capitalize;
 }
 
+.feed-item-vision {
+  color: #8ddcff;
+  font-weight: 600;
+}
+
 /* Image tweet in feed */
 .feed-item-image {
   width: 100%;

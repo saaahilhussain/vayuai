@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import './Navbar.css';
 
 export default function Navbar({ isLive, onToggleLive, onToggleHeatmap, heatmapActive, onSpeedChange, speed, onToggleTimeline, timelineActive, isDarkMode, onToggleTheme, onOpenAddModal }) {
@@ -7,7 +6,7 @@ export default function Navbar({ isLive, onToggleLive, onToggleHeatmap, heatmapA
       <div className="navbar-brand">
         <div className="navbar-logo">🌫️</div>
         <div>
-          <div className="navbar-title">AirLens</div>
+          <div className="navbar-title">VayuAI</div>
           <div className="navbar-subtitle">Guwahati Pollution Intelligence</div>
         </div>
       </div>

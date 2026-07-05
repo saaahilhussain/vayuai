@@ -9,18 +9,32 @@ import "./LiveMap.css";
 
 const GUWAHATI_CENTER = [91.75, 26.15];
 
-const SEVERITY_COLORS = {
-  critical: "#ef4444",
-  high: "#f97316",
-  moderate: "#eab308",
-  low: "#3b82f6",
-};
-
 const SEVERITY_PIN_BG = {
   critical: "#ef444466",
   high: "#f9731666",
   moderate: "#eab30866",
   low: "#3b82f666",
+};
+
+const escapeHtml = (value = "") =>
+  String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+const safeImageSrc = (value) => {
+  const src = String(value || "");
+  if (
+    src.startsWith("/images/") ||
+    src.startsWith("data:image/jpeg;base64,") ||
+    src.startsWith("data:image/png;base64,") ||
+    src.startsWith("data:image/webp;base64,")
+  ) {
+    return escapeHtml(src);
+  }
+  return "";
 };
 
 // --- Pin: severity-colored dot ---
@@ -46,6 +60,9 @@ const createTooltipElement = (event) => {
   el.className = `map-tweet-card ${event.imageUrl ? 'mtc-has-image' : ''}`;
   const engagement = event.engagement || {};
   const severity = event.severity || "low";
+  const imageSrc = safeImageSrc(event.imageUrl);
+  const text = String(event.text || "");
+  const previewText = text.substring(0, 100) + (text.length > 100 ? "…" : "");
 
   const fmt = (n) => {
     if (!n) return "0";
@@ -54,24 +71,24 @@ const createTooltipElement = (event) => {
   };
 
   el.innerHTML = `
-    ${event.imageUrl ? `<div class="mtc-image"><img src="${event.imageUrl}" alt="" loading="lazy" /></div>` : ""}
+    ${imageSrc ? `<div class="mtc-image"><img src="${imageSrc}" alt="" loading="lazy" /></div>` : ""}
     <div class="mtc-header">
       <div class="mtc-dot ${severity}"></div>
-      <span class="mtc-name">${event.locationName || "Unknown"}</span>
-      <span class="mtc-handle">${event.handle || "@unknown"}</span>
+      <span class="mtc-name">${escapeHtml(event.locationName || "Unknown")}</span>
+      <span class="mtc-handle">${escapeHtml(event.handle || "@unknown")}</span>
     </div>
-    <div class="mtc-text" id="mtc-text-${event.id}">${event.text.substring(0, 100)}${event.text.length > 100 ? "…" : ""}</div>
+    <div class="mtc-text" id="mtc-text-${escapeHtml(event.id)}">${escapeHtml(previewText)}</div>
     <div class="mtc-footer">
       <span class="mtc-stat">${ICON.reply} ${fmt(engagement.replies)}</span>
       <span class="mtc-stat">${ICON.heart} ${fmt(engagement.likes)}</span>
       <span class="mtc-stat">${ICON.retweet} ${fmt(engagement.retweets)}</span>
-      ${event.translatedText ? `<button class="mtc-translate-btn" id="mtc-translate-${event.id}">Translate</button>` : ""}
+      ${event.translatedText ? `<button class="mtc-translate-btn" id="mtc-translate-${escapeHtml(event.id)}">Translate</button>` : ""}
     </div>
   `;
 
   if (event.translatedText) {
-    const btn = el.querySelector(`#mtc-translate-${event.id}`);
-    const textEl = el.querySelector(`#mtc-text-${event.id}`);
+    const btn = el.querySelector(".mtc-translate-btn");
+    const textEl = el.querySelector(".mtc-text");
     let isTranslated = false;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -92,26 +109,38 @@ const createPopupElement = (event) => {
   const severity = event.severity || "low";
   const typeLabel = POLLUTION_TYPES[event.pollutionType]?.label || "Unknown";
   const relevancy = event.relevancyScore ? Math.round(event.relevancyScore * 100) : "—";
+  const vision = event.imageAnalysis?.available ? event.imageAnalysis : null;
+  const imageSrc = safeImageSrc(event.imageUrl);
+  const visionSummary = vision?.summary || vision?.visibleSignals?.join(", ") || "";
 
   el.innerHTML = `
-    ${event.imageUrl ? `<div class="mtp-image"><img src="${event.imageUrl}" alt="" loading="lazy" /></div>` : ""}
+    ${imageSrc ? `<div class="mtp-image"><img src="${imageSrc}" alt="" loading="lazy" /></div>` : ""}
     <div class="mtp-header">
       <div class="mtp-dot ${severity}"></div>
       <div class="mtp-user">
-        <span class="mtp-name">${event.locationName || "Unknown"}${event.state ? ", " + event.state : ""}</span>
-        <span class="mtp-handle">${event.handle || "@unknown"}</span>
+        <span class="mtp-name">${escapeHtml(event.locationName || "Unknown")}${event.state ? ", " + escapeHtml(event.state) : ""}</span>
+        <span class="mtp-handle">${escapeHtml(event.handle || "@unknown")}</span>
       </div>
-      <span class="mtp-severity">${severity}</span>
+      <span class="mtp-severity">${escapeHtml(severity)}</span>
     </div>
-    <div class="mtp-text" id="mtp-text-${event.id}">${event.text}</div>
+    <div class="mtp-text" id="mtp-text-${escapeHtml(event.id)}">${escapeHtml(event.text || "")}</div>
     <div class="mtp-meta">
-      <span class="mtp-type">${typeLabel}</span>
+      <span class="mtp-type">${escapeHtml(typeLabel)}</span>
       <span class="mtp-separator">·</span>
       <span class="mtp-time">${timeAgo(event.timestamp)}</span>
       <span class="mtp-separator">·</span>
       <span class="mtp-relevancy">${relevancy}%</span>
-      ${event.translatedText ? `<button class="mtp-translate-btn" id="mtp-translate-${event.id}">Translate</button>` : ""}
+      ${event.translatedText ? `<button class="mtp-translate-btn" id="mtp-translate-${escapeHtml(event.id)}">Translate</button>` : ""}
     </div>
+    ${
+      vision
+        ? `<div class="mtp-vision">
+            <span>Gemini Vision</span>
+            <strong>${Math.round(vision.confidence * 100)}%</strong>
+            <p>${escapeHtml(visionSummary)}</p>
+          </div>`
+        : ""
+    }
     <div class="mtp-engagement">
       <span>${ICON.reply} ${engagement.replies || 0}</span>
       <span>${ICON.heart} ${engagement.likes || 0}</span>
@@ -121,8 +150,8 @@ const createPopupElement = (event) => {
   `;
 
   if (event.translatedText) {
-    const btn = el.querySelector(`#mtp-translate-${event.id}`);
-    const textEl = el.querySelector(`#mtp-text-${event.id}`);
+    const btn = el.querySelector(".mtp-translate-btn");
+    const textEl = el.querySelector(".mtp-text");
     let isTranslated = false;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -275,7 +304,7 @@ export default function LiveMap({ events, heatmapActive, selectedEvent, isDarkMo
             timelineActive ? 0.85 : 0.8,
           );
         }
-      } catch (e) {
+      } catch {
         /* layer may not exist yet */
       }
     };
@@ -354,9 +383,8 @@ export default function LiveMap({ events, heatmapActive, selectedEvent, isDarkMo
       // Build markers with tweet card tooltips
       const managerMarkers = events
         .filter((e) => e.lat && e.lng)
-        .map((event, index) => {
+        .map((event) => {
           const severity = event.severity || "low";
-          const pinColor = SEVERITY_COLORS[severity] || "#3b82f6";
           const pinBg = SEVERITY_PIN_BG[severity] || "#3b82f666";
 
           return {
@@ -389,7 +417,7 @@ export default function LiveMap({ events, heatmapActive, selectedEvent, isDarkMo
               element: createPopupElement(event),
               dimensions: {
                 width: event.imageUrl ? 320 : 300,
-                height: event.imageUrl ? 400 : 240,
+                height: event.imageUrl ? 440 : 270,
                 padding: 8,
               },
               style: {

@@ -43,6 +43,14 @@ export default function LiveFeed({ events, onSelectEvent, onClose }) {
               <span className="feed-item-type">
                 {POLLUTION_TYPES[event.pollutionType]?.label || 'Unknown'}
               </span>
+              {event.imageAnalysis?.available && (
+                <>
+                  <span className="feed-item-sep">·</span>
+                  <span className="feed-item-vision">
+                    Gemini {Math.round(event.imageAnalysis.confidence * 100)}%
+                  </span>
+                </>
+              )}
               {event.locationName && (
                 <>
                   <span className="feed-item-sep">·</span>

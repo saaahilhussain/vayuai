@@ -90,6 +90,11 @@
   resize: vertical;
 }
 
+.form-group input[type="file"] {
+  padding: 10px;
+  cursor: pointer;
+}
+
 .form-group input:hover,
 .form-group textarea:hover {
   background: var(--bg-glass-hover);
@@ -120,6 +125,53 @@
   background: hsla(140, 65%, 50%, 0.15);
   border: 1px solid hsla(140, 65%, 50%, 0.3);
   color: var(--low);
+}
+
+.status-message.loading {
+  background: hsla(200, 95%, 55%, 0.12);
+  border: 1px solid hsla(200, 95%, 55%, 0.24);
+  color: var(--accent);
+}
+
+.image-preview {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: hsla(220, 20%, 13%, 0.6);
+}
+
+.image-preview img {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  display: block;
+}
+
+.image-preview-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.image-preview-meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-preview-meta button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 8px;
 }
 
 .modal-actions {

@@ -3,33 +3,38 @@ import { POLLUTION_TYPES, timeAgo } from '../utils/api';
 import './AlertBanner.css';
 
 export default function AlertBanner({ event, onDismiss, onSelect }) {
-  const [visible, setVisible] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [dismissedId, setDismissedId] = useState(null);
+  const [expandedState, setExpandedState] = useState({
+    id: null,
+    expanded: false,
+  });
+  const expanded =
+    expandedState.id === event?.id ? expandedState.expanded : false;
+  const visible = event && dismissedId !== event.id;
 
   useEffect(() => {
     if (!event) return;
-    setVisible(true);
-    setExpanded(false);
 
     if (Notification.permission === 'granted') {
       try {
-        new Notification('AirLens Alert', {
+        new Notification('VayuAI Alert', {
           body: `${event.locationName || 'Guwahati'} · ${event.text.substring(0, 100)}`,
           icon: '/favicon.svg',
           tag: event.id,
         });
-      } catch (e) { /* */ }
+      } catch { /* notification may be blocked */ }
     }
+  }, [event]);
 
+  useEffect(() => {
+    if (!event || expanded) return undefined;
     const timer = setTimeout(() => {
-      if (!expanded) {
-        setVisible(false);
-        setTimeout(() => onDismiss?.(), 300);
-      }
+      setDismissedId(event.id);
+      setTimeout(() => onDismiss?.(), 300);
     }, 12000);
 
     return () => clearTimeout(timer);
-  }, [event?.id]);
+  }, [event, expanded, onDismiss]);
 
   if (!event || !visible) return null;
 
@@ -38,7 +43,7 @@ export default function AlertBanner({ event, onDismiss, onSelect }) {
 
   const handleClick = (e) => {
     e.stopPropagation();
-    setExpanded(!expanded);
+    setExpandedState({ id: event.id, expanded: !expanded });
   };
 
   return (
@@ -55,7 +60,7 @@ export default function AlertBanner({ event, onDismiss, onSelect }) {
           </div>
           <div className="alert-text">{event.text}</div>
         </div>
-        <button className="alert-dismiss" onClick={(e) => { e.stopPropagation(); setVisible(false); onDismiss?.(); }}>✕</button>
+        <button className="alert-dismiss" onClick={(e) => { e.stopPropagation(); setDismissedId(event.id); onDismiss?.(); }}>✕</button>
       </div>
 
       {expanded && (
