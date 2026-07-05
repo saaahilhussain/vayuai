@@ -41,26 +41,36 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      fetchHotspots().then(data => {
-        if (!cancelled) setHotspots(data);
-      }).catch(console.error);
+      fetchHotspots()
+        .then((data) => {
+          if (!cancelled) setHotspots(data);
+        })
+        .catch(console.error);
     };
     load();
     const interval = setInterval(load, 15000); // 15 seconds
-    return () => { cancelled = true; clearInterval(interval); };
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [events]); // Also re-fetch if events change rapidly
 
   // Fetch predictions periodically
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      fetchPredictions().then(data => {
-        if (!cancelled) setPredictionData(data);
-      }).catch(console.error);
+      fetchPredictions()
+        .then((data) => {
+          if (!cancelled) setPredictionData(data);
+        })
+        .catch(console.error);
     };
     load();
     const interval = setInterval(load, 60000); // 60 seconds
-    return () => { cancelled = true; clearInterval(interval); };
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [events]);
 
   useEffect(() => {
@@ -165,15 +175,15 @@ export default function App() {
           hotspots={hotspots}
           onClose={() => setHotspotsActive(false)}
           onSelectHotspot={(hs) => {
-            setSelectedEvent({ 
-              lat: hs.lat, 
-              lng: hs.lng, 
+            setSelectedEvent({
+              lat: hs.lat,
+              lng: hs.lng,
               locationName: hs.locationName,
               severity: hs.severity,
               pollutionType: hs.dominantType,
               text: `Hotspot Center: ${hs.eventCount} nearby reports.`,
               timestamp: new Date().toISOString(),
-              _t: Date.now() 
+              _t: Date.now(),
             });
           }}
         />
@@ -185,15 +195,19 @@ export default function App() {
           predictionData={predictionData}
           onClose={() => setPredictionsActive(false)}
           onSelectLocation={(loc) => {
-            setSelectedEvent({ 
-              lat: loc.lat, 
-              lng: loc.lng, 
+            setSelectedEvent({
+              lat: loc.lat,
+              lng: loc.lng,
               locationName: loc.name,
-              severity: loc.hourlyForecast.find(h => h.predictedAQI === loc.peakAQI)?.category.toLowerCase().replace(' ', '-') || 'high',
-              pollutionType: 'smog', // Generic fallback
+              severity:
+                loc.hourlyForecast
+                  .find((h) => h.predictedAQI === loc.peakAQI)
+                  ?.category.toLowerCase()
+                  .replace(" ", "-") || "high",
+              pollutionType: "smog", // Generic fallback
               text: `Predicted Peak AQI: ${loc.peakAQI} at ${loc.peakHour}:00. Current AQI: ${loc.currentAQI}.`,
               timestamp: new Date().toISOString(),
-              _t: Date.now() 
+              _t: Date.now(),
             });
           }}
         />
@@ -238,6 +252,18 @@ export default function App() {
               >
                 Sensors
               </button>
+            </>
+          )}
+
+          <button
+            className={`cb-btn ${mapOpen ? "cb-active" : ""}`}
+            onClick={() => setMapOpen(!mapOpen)}
+          >
+            {mapOpen ? "Go to Home" : "Show Map"}
+          </button>
+
+          {mapOpen && (
+            <>
               <button
                 className={`cb-btn ${hotspotsActive ? "cb-active" : ""}`}
                 onClick={() => setHotspotsActive(!hotspotsActive)}
@@ -253,18 +279,17 @@ export default function App() {
               <button
                 className={`cb-btn ${municipalActive ? "cb-active" : ""}`}
                 onClick={() => setMunicipalActive(!municipalActive)}
-                style={municipalActive ? {} : { color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)' }}
+                style={
+                  municipalActive
+                    ? {}
+                    : { color: "#38bdf8", borderColor: "rgba(56,189,248,0.3)" }
+                }
               >
                 Command Center
               </button>
             </>
           )}
-          <button
-            className={`cb-btn ${!mapOpen ? "cb-active" : ""}`}
-            onClick={() => setMapOpen(!mapOpen)}
-          >
-            {mapOpen ? "Home" : "Show Map"}
-          </button>
+
           <button
             className={`cb-btn ${isAddModalOpen ? "cb-active" : ""}`}
             onClick={() => {
