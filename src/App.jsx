@@ -1,8 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import LiveMap from "./components/LiveMap";
 import LiveFeed from "./components/LiveFeed";
 import AlertBanner from "./components/AlertBanner";
-import TimelinePanel from "./components/TimelinePanel";
 import AddTweetModal from "./components/AddTweetModal";
 import {
   fetchEvents,
@@ -16,12 +15,10 @@ export default function App() {
   const [events, setEvents] = useState([]);
   const [displayEvents, setDisplayEvents] = useState([]);
   const [isLive, setIsLive] = useState(true);
-  const [heatmapActive, setHeatmapActive] = useState(false);
+  const [heatmapActive, setHeatmapActive] = useState(true);
   const [speed] = useState(8000);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [criticalAlert, setCriticalAlert] = useState(null);
-  const [timelineActive, setTimelineActive] = useState(false);
-  const [timeRange, setTimeRange] = useState(null);
   const isDarkMode = true;
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
@@ -48,7 +45,6 @@ export default function App() {
         return updated.slice(-500);
       });
       setDisplayEvents((prev) => {
-        if (timeRange) return prev;
         const updated = [...prev, event];
         return updated.slice(-500);
       });
@@ -59,7 +55,7 @@ export default function App() {
     });
 
     return () => es.close();
-  }, [timeRange]);
+  }, []);
 
   const handleToggleLive = async () => {
     if (isLive) {
@@ -68,31 +64,6 @@ export default function App() {
     } else {
       await startSimulation(speed);
       setIsLive(true);
-    }
-  };
-
-  const handleTimeRangeChange = useCallback(
-    (start, end) => {
-      setTimeRange({ start, end });
-      const filtered = events.filter((e) => {
-        const t = new Date(e.timestamp).getTime();
-        return t >= start && t <= end;
-      });
-      setDisplayEvents(filtered);
-    },
-    [events],
-  );
-
-  const handleToggleTimeline = () => {
-    const willBeActive = !timelineActive;
-    setTimelineActive(willBeActive);
-    if (willBeActive) {
-      // Auto-enable heatmap and start from beginning
-      setHeatmapActive(true);
-    } else {
-      setTimeRange(null);
-      setDisplayEvents(events);
-      setHeatmapActive(false);
     }
   };
 
@@ -109,7 +80,6 @@ export default function App() {
         heatmapActive={heatmapActive}
         selectedEvent={selectedEvent}
         isDarkMode={isDarkMode}
-        timelineActive={timelineActive}
         locationPickActive={isPickingReportLocation}
         pickedReportLocation={reportLocationCoords}
         onReportLocationPick={(coords) => {
@@ -122,15 +92,13 @@ export default function App() {
       {feedOpen && (
         <LiveFeed
           events={displayEvents}
-          onSelectEvent={(event) => setSelectedEvent(event)}
+          onSelectEvent={(event) => setSelectedEvent({ ...event, _t: Date.now() })}
           onClose={() => setFeedOpen(false)}
         />
       )}
 
-      {/* Floating bottom control bar — lifts above timeline */}
-      <div
-        className={`control-bar ${timelineActive ? "control-bar-lifted" : ""}`}
-      >
+      {/* Floating bottom control bar */}
+      <div className="control-bar">
         <div className="control-bar-inner">
           <button
             className={`cb-btn ${isLive ? "cb-active" : ""}`}
@@ -149,12 +117,6 @@ export default function App() {
             onClick={() => setFeedOpen(!feedOpen)}
           >
             Feed
-          </button>
-          <button
-            className={`cb-btn ${timelineActive ? "cb-active" : ""}`}
-            onClick={handleToggleTimeline}
-          >
-            Timeline
           </button>
           <button
             className={`cb-btn ${isAddModalOpen ? "cb-active" : ""}`}
@@ -176,21 +138,6 @@ export default function App() {
             setSelectedEvent(event);
             setCriticalAlert(null);
           }}
-        />
-      )}
-
-      {timelineActive && (
-        <TimelinePanel
-          events={events}
-          feedOpen={feedOpen}
-          autoPlay={true}
-          onClose={() => {
-            setTimelineActive(false);
-            setTimeRange(null);
-            setDisplayEvents(events);
-            setHeatmapActive(false);
-          }}
-          onTimeRangeChange={handleTimeRangeChange}
         />
       )}
 

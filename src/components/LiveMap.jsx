@@ -1,556 +1,309 @@
-import { useEffect, useRef, useState } from "react";
-import maplibregl from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
-import { MapManager } from "@arenarium/maps";
-import { MaplibreProvider, MaplibreLightStyle, MaplibreDarkStyle } from "@arenarium/maps-integration-maplibre";
-import "@arenarium/maps/style.css";
+import { useEffect, useState, useMemo } from "react";
+import { APIProvider, Map, AdvancedMarker, Pin, InfoWindow, useMap, MapControl, ControlPosition } from "@vis.gl/react-google-maps";
 import { POLLUTION_TYPES, timeAgo } from "../utils/api";
 import "./LiveMap.css";
 
-const GUWAHATI_CENTER = [91.75, 26.15];
+const GUWAHATI_CENTER = { lat: 26.15, lng: 91.75 };
 const GUWAHATI_BOUNDS = {
-  minLat: 25.95,
-  maxLat: 26.35,
-  minLng: 91.45,
-  maxLng: 92.05,
+  north: 26.35,
+  south: 25.95,
+  west: 91.45,
+  east: 92.05,
 };
 
 function isInsideGuwahati(lat, lng) {
   return (
-    lat >= GUWAHATI_BOUNDS.minLat &&
-    lat <= GUWAHATI_BOUNDS.maxLat &&
-    lng >= GUWAHATI_BOUNDS.minLng &&
-    lng <= GUWAHATI_BOUNDS.maxLng
+    lat >= GUWAHATI_BOUNDS.south &&
+    lat <= GUWAHATI_BOUNDS.north &&
+    lng >= GUWAHATI_BOUNDS.west &&
+    lng <= GUWAHATI_BOUNDS.east
   );
 }
 
 const SEVERITY_PIN_BG = {
-  critical: "#ef444466",
-  high: "#f9731666",
-  moderate: "#eab30866",
-  low: "#3b82f666",
-};
-
-const escapeHtml = (value = "") =>
-  String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-
-const safeImageSrc = (value) => {
-  const src = String(value || "");
-  if (
-    src.startsWith("/images/") ||
-    src.startsWith("data:image/jpeg;base64,") ||
-    src.startsWith("data:image/png;base64,") ||
-    src.startsWith("data:image/webp;base64,")
-  ) {
-    return escapeHtml(src);
-  }
-  return "";
-};
-
-// --- Pin: severity-colored dot ---
-const createPinElement = (severity) => {
-  const el = document.createElement("div");
-  el.className = `pollution-marker ${severity}-marker`;
-  el.style.width = "100%";
-  el.style.height = "100%";
-  return el;
+  critical: "#ef4444",
+  high: "#f97316",
+  moderate: "#eab308",
+  low: "#3b82f6",
 };
 
 // Twitter/X SVG icons (14x14)
-const ICON = {
-  reply: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
-  heart: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>',
-  retweet: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2h3.5v2H7.5c-2.21 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H13V4h3.5c2.21 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"/></svg>',
-  views: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8.75 21V3h2v18h-2zM18.75 21V8.5h2V21h-2zM13.75 21v-9h2v9h-2zM3.75 21v-4h2v4h-2z"/></svg>',
-};
+const ICON_REPLY = (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+);
+const ICON_HEART = (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+);
+const ICON_RETWEET = (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M4.5 3.88l4.432 4.14-1.364 1.46L5.5 7.55V16c0 1.1.896 2 2 2h3.5v2H7.5c-2.21 0-4-1.79-4-4V7.55L1.432 9.48.068 8.02 4.5 3.88zM16.5 6H13V4h3.5c2.21 0 4 1.79 4 4v8.45l2.068-1.93 1.364 1.46-4.432 4.14-4.432-4.14 1.364-1.46 2.068 1.93V8c0-1.1-.896-2-2-2z"/></svg>
+);
+const ICON_VIEWS = (
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8.75 21V3h2v18h-2zM18.75 21V8.5h2V21h-2zM13.75 21v-9h2v9h-2zM3.75 21v-4h2v4h-2z"/></svg>
+);
 
-// --- Tooltip: tweet card on map with Twitter icons ---
-const createTooltipElement = (event) => {
-  const el = document.createElement("div");
-  el.className = `map-tweet-card ${event.imageUrl ? 'mtc-has-image' : ''}`;
-  const engagement = event.engagement || {};
-  const severity = event.severity || "low";
-  const imageSrc = safeImageSrc(event.imageUrl);
-  const text = String(event.text || "");
-  const previewText = text.substring(0, 100) + (text.length > 100 ? "…" : "");
+const darkStyle = [
+  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
+  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] },
+];
 
-  const fmt = (n) => {
-    if (!n) return "0";
-    if (n >= 1000) return (n / 1000).toFixed(1) + "k";
-    return n.toString();
-  };
+const HeatmapLayer = ({ events, heatmapActive }) => {
+  const map = useMap();
+  const [heatmap, setHeatmap] = useState(null);
 
-  el.innerHTML = `
-    ${imageSrc ? `<div class="mtc-image"><img src="${imageSrc}" alt="" loading="lazy" /></div>` : ""}
-    <div class="mtc-header">
-      <div class="mtc-dot ${severity}"></div>
-      <span class="mtc-name">${escapeHtml(event.locationName || "Unknown")}</span>
-      <span class="mtc-handle">${escapeHtml(event.handle || "@unknown")}</span>
-    </div>
-    <div class="mtc-text" id="mtc-text-${escapeHtml(event.id)}">${escapeHtml(previewText)}</div>
-    <div class="mtc-footer">
-      <span class="mtc-stat">${ICON.reply} ${fmt(engagement.replies)}</span>
-      <span class="mtc-stat">${ICON.heart} ${fmt(engagement.likes)}</span>
-      <span class="mtc-stat">${ICON.retweet} ${fmt(engagement.retweets)}</span>
-      ${event.translatedText ? `<button class="mtc-translate-btn" id="mtc-translate-${escapeHtml(event.id)}">Translate</button>` : ""}
-    </div>
-  `;
-
-  if (event.translatedText) {
-    const btn = el.querySelector(".mtc-translate-btn");
-    const textEl = el.querySelector(".mtc-text");
-    let isTranslated = false;
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      isTranslated = !isTranslated;
-      const textToShow = isTranslated ? event.translatedText : event.text;
-      textEl.innerText = textToShow.substring(0, 100) + (textToShow.length > 100 ? "…" : "");
-      btn.innerText = isTranslated ? "Original" : "Translate";
+  useEffect(() => {
+    if (!map || !window.google || !window.google.maps.visualization) return;
+    
+    const hm = new window.google.maps.visualization.HeatmapLayer({
+      map: heatmapActive ? map : null,
+      radius: 30,
+      opacity: 0.8,
     });
-  }
-  return el;
+    setHeatmap(hm);
+
+    return () => {
+      hm.setMap(null);
+    };
+  }, [map, heatmapActive]);
+
+  useEffect(() => {
+    if (!heatmap || !window.google) return;
+    
+    if (heatmapActive) {
+      heatmap.setMap(map);
+      const data = events.filter(e => e.lat && e.lng).map(e => ({
+        location: new window.google.maps.LatLng(e.lat, e.lng),
+        weight: (e.severityLevel || 1) / 4,
+      }));
+      heatmap.setData(data);
+      heatmap.setOptions({
+        radius: 30,
+        opacity: 0.8,
+        gradient: [
+          "rgba(0, 0, 0, 0)",
+          "rgba(255, 255, 0, 1)",     // Yellow
+          "rgba(255, 200, 0, 1)",
+          "rgba(255, 150, 0, 1)",     // Orange
+          "rgba(255, 100, 0, 1)",
+          "rgba(255, 50, 0, 1)",      // Red-orange
+          "rgba(255, 0, 0, 1)",       // Red
+          "rgba(200, 0, 0, 1)",       // Dark Red
+          "rgba(150, 0, 0, 1)",       // Darker Red
+          "rgba(100, 0, 0, 1)"        // Darkest Red
+        ]
+      });
+    } else {
+      heatmap.setMap(null);
+    }
+  }, [events, heatmapActive, heatmap, map]);
+
+  return null;
 };
 
-// --- Popup: expanded view with Twitter icons ---
-const createPopupElement = (event) => {
-  const el = document.createElement("div");
-  el.className = `map-tweet-popup ${event.imageUrl ? 'mtp-has-image' : ''}`;
+const CustomInfoWindow = ({ event, onClose }) => {
+  const [isTranslated, setIsTranslated] = useState(false);
+  if (!event) return null;
+
   const engagement = event.engagement || {};
   const severity = event.severity || "low";
   const typeLabel = POLLUTION_TYPES[event.pollutionType]?.label || "Unknown";
   const relevancy = event.relevancyScore ? Math.round(event.relevancyScore * 100) : "—";
   const vision = event.imageAnalysis?.available ? event.imageAnalysis : null;
-  const imageSrc = safeImageSrc(event.imageUrl);
+  const imageSrc = event.imageUrl || "";
   const visionSummary = vision?.summary || vision?.visibleSignals?.join(", ") || "";
+  const textToShow = isTranslated && event.translatedText ? event.translatedText : event.text;
 
-  el.innerHTML = `
-    ${imageSrc ? `<div class="mtp-image"><img src="${imageSrc}" alt="" loading="lazy" /></div>` : ""}
-    <div class="mtp-header">
-      <div class="mtp-dot ${severity}"></div>
-      <div class="mtp-user">
-        <span class="mtp-name">${escapeHtml(event.locationName || "Unknown")}${event.state ? ", " + escapeHtml(event.state) : ""}</span>
-        <span class="mtp-handle">${escapeHtml(event.handle || "@unknown")}</span>
+  return (
+    <div className={`map-tweet-popup ${imageSrc ? 'mtp-has-image' : ''}`} style={{ position: "relative" }}>
+      <button 
+        onClick={onClose}
+        title="Close"
+        style={{
+          position: "absolute",
+          top: "8px",
+          right: "8px",
+          background: "rgba(0,0,0,0.6)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          color: "#fff",
+          width: "26px",
+          height: "26px",
+          borderRadius: "50%",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10,
+          padding: 0
+        }}
+      >
+        <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+      {imageSrc && (
+        <div className="mtp-image">
+          <img src={imageSrc} alt="" loading="lazy" />
+        </div>
+      )}
+      <div className="mtp-header">
+        <div className={`mtp-dot ${severity}`}></div>
+        <div className="mtp-user">
+          <span className="mtp-name">{event.locationName || "Unknown"}{event.state ? ", " + event.state : ""}</span>
+          <span className="mtp-handle">{event.handle || "@unknown"}</span>
+        </div>
+        <span className="mtp-severity">{severity}</span>
       </div>
-      <span class="mtp-severity">${escapeHtml(severity)}</span>
+      <div className="mtp-text">{textToShow}</div>
+      <div className="mtp-meta">
+        <span className="mtp-type">{typeLabel}</span>
+        <span className="mtp-separator">·</span>
+        <span className="mtp-time">{timeAgo(event.timestamp)}</span>
+        <span className="mtp-separator">·</span>
+        <span className="mtp-relevancy">{relevancy}%</span>
+        {event.translatedText && (
+          <button className="mtp-translate-btn" onClick={(e) => { e.stopPropagation(); setIsTranslated(!isTranslated); }}>
+            {isTranslated ? "Original" : "Translate"}
+          </button>
+        )}
+      </div>
+      {vision && (
+        <div className="mtp-vision">
+          <span>Gemini Vision</span>
+          <strong>{Math.round(vision.confidence * 100)}%</strong>
+          <p>{visionSummary}</p>
+        </div>
+      )}
+      <div className="mtp-engagement">
+        <span>{ICON_REPLY} {engagement.replies || 0}</span>
+        <span>{ICON_HEART} {engagement.likes || 0}</span>
+        <span>{ICON_RETWEET} {engagement.retweets || 0}</span>
+        <span>{ICON_VIEWS} {engagement.views || 0}</span>
+      </div>
     </div>
-    <div class="mtp-text" id="mtp-text-${escapeHtml(event.id)}">${escapeHtml(event.text || "")}</div>
-    <div class="mtp-meta">
-      <span class="mtp-type">${escapeHtml(typeLabel)}</span>
-      <span class="mtp-separator">·</span>
-      <span class="mtp-time">${timeAgo(event.timestamp)}</span>
-      <span class="mtp-separator">·</span>
-      <span class="mtp-relevancy">${relevancy}%</span>
-      ${event.translatedText ? `<button class="mtp-translate-btn" id="mtp-translate-${escapeHtml(event.id)}">Translate</button>` : ""}
-    </div>
-    ${
-      vision
-        ? `<div class="mtp-vision">
-            <span>Gemini Vision</span>
-            <strong>${Math.round(vision.confidence * 100)}%</strong>
-            <p>${escapeHtml(visionSummary)}</p>
-          </div>`
-        : ""
-    }
-    <div class="mtp-engagement">
-      <span>${ICON.reply} ${engagement.replies || 0}</span>
-      <span>${ICON.heart} ${engagement.likes || 0}</span>
-      <span>${ICON.retweet} ${engagement.retweets || 0}</span>
-      <span>${ICON.views} ${engagement.views || 0}</span>
-    </div>
-  `;
-
-  if (event.translatedText) {
-    const btn = el.querySelector(".mtp-translate-btn");
-    const textEl = el.querySelector(".mtp-text");
-    let isTranslated = false;
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      isTranslated = !isTranslated;
-      textEl.innerText = isTranslated ? event.translatedText : event.text;
-      btn.innerText = isTranslated ? "Original" : "Translate";
-    });
-  }
-  return el;
+  );
 };
 
+const MyLocationControl = ({ setMapCenter, setMapZoom }) => {
+  const map = useMap();
+  const [loading, setLoading] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
 
+  const handleLocationClick = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+    setLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const pos = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        setUserLocation(pos);
+        setMapCenter(pos);
+        setMapZoom(17);
+        if (map) {
+          map.panTo(pos);
+          map.setZoom(17);
+        }
+        setLoading(false);
+      },
+      () => {
+        alert("Error: The Geolocation service failed.");
+        setLoading(false);
+      }
+    );
+  };
+
+  return (
+    <>
+      <MapControl position={ControlPosition.RIGHT_BOTTOM}>
+        <div style={{ paddingRight: "10px", paddingBottom: "22px" }}>
+          <button
+            onClick={handleLocationClick}
+            title="Show Your Location"
+            style={{
+              background: "#2a2a2a",
+              border: "1px solid #444",
+              borderRadius: "4px",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+              cursor: "pointer",
+              width: "38px",
+              height: "38px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#ededed",
+            }}
+          >
+            {loading ? (
+              <span style={{ fontSize: "10px" }}>...</span>
+            ) : (
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="7" />
+                <line x1="12" y1="1" x2="12" y2="5" />
+                <line x1="12" y1="19" x2="12" y2="23" />
+                <line x1="1" y1="12" x2="5" y2="12" />
+                <line x1="19" y1="12" x2="23" y2="12" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </MapControl>
+      {userLocation && (
+        <AdvancedMarker position={userLocation} zIndex={1000}>
+          <div
+            style={{
+              width: "16px",
+              height: "16px",
+              backgroundColor: "#3b82f6",
+              borderRadius: "50%",
+              border: "3px solid white",
+              boxShadow: "0 0 10px rgba(0,0,0,0.4)",
+            }}
+          />
+        </AdvancedMarker>
+      )}
+    </>
+  );
+};
 
 export default function LiveMap({
   events,
   heatmapActive,
   selectedEvent,
   isDarkMode,
-  timelineActive,
   locationPickActive,
   pickedReportLocation,
   onReportLocationPick,
   onCancelLocationPick,
 }) {
-  const mapContainer = useRef(null);
-  const providerRef = useRef(null);
-  const managerRef = useRef(null);
-  const reportLocationMarkerRef = useRef(null);
-  const [tokenMissing, setTokenMissing] = useState(false);
+  const [selectedMarker, setSelectedMarker] = useState(null);
+  const [mapCenter, setMapCenter] = useState(GUWAHATI_CENTER);
+  const [mapZoom, setMapZoom] = useState(12);
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const tokenMissing = !apiKey || apiKey === "your_token_here";
 
-  // Initialize map
   useEffect(() => {
-    let cancelled = false;
-
-    const init = async () => {
-      try {
-        const token = import.meta.env.VITE_ARENARIUM_TOKEN;
-        if (!token || token === "your_token_here") {
-          setTokenMissing(true);
-          return;
-        }
-
-        if (providerRef.current) return;
-
-        const maplibreProvider = new MaplibreProvider(
-          maplibregl.Map,
-          maplibregl.Marker,
-          {
-            container: mapContainer.current,
-            style: MaplibreDarkStyle,
-            center: GUWAHATI_CENTER,
-            zoom: 12,
-            maxBounds: [
-              [91.45, 25.95],
-              [92.05, 26.35],
-            ],
-            pitch: 0,
-            antialias: true,
-          },
-        );
-
-        const createdManager = await MapManager.create(
-          token,
-          maplibreProvider,
-          {
-            pin: {
-              fadeout: {
-                scale: 0.25,
-                color: 0,
-              },
-              depth: 2,
-            },
-            popup: { pan: true },
-            events: {
-              error: (message, err) => {
-                console.error("Map error:", message, err);
-              },
-            },
-          },
-        );
-
-        if (cancelled) {
-          maplibreProvider.getMap().remove();
-          createdManager.removeMarkers();
-          return;
-        }
-
-        managerRef.current = createdManager;
-        providerRef.current = maplibreProvider;
-
-        const mapInstance = maplibreProvider.getMap();
-
-        mapInstance.addControl(
-          new maplibregl.NavigationControl({ showCompass: false }),
-          "bottom-left",
-        );
-
-        mapInstance.on("load", () => {
-          if (cancelled) return;
-          requestAnimationFrame(() => {
-            mapInstance.resize();
-          });
-        });
-      } catch (err) {
-        console.error("Map init failed:", err);
-      }
-    };
-
-    init();
-
-    return () => {
-      cancelled = true;
-      if (providerRef.current) {
-        providerRef.current.getMap().remove();
-        providerRef.current = null;
-      }
-      if (managerRef.current) {
-        managerRef.current.removeMarkers();
-        managerRef.current = null;
-      }
-    };
-  }, []);
-
-  // Handle style switching
-  useEffect(() => {
-    if (!providerRef.current) return;
-    const map = providerRef.current.getMap();
-    const targetStyle = isDarkMode ? MaplibreDarkStyle : MaplibreLightStyle;
-    
-    if (map.isStyleLoaded()) {
-      map.setStyle(targetStyle);
-    } else {
-      map.once("load", () => map.setStyle(targetStyle));
+    if (selectedEvent && selectedEvent.lat && selectedEvent.lng) {
+      setMapCenter({ lat: selectedEvent.lat, lng: selectedEvent.lng });
+      setMapZoom(14);
+      setSelectedMarker(selectedEvent);
     }
-  }, [isDarkMode]);
+  }, [selectedEvent]);
 
-  // Toggle heatmap visibility + update radius for timeline animation
-  useEffect(() => {
-    if (!providerRef.current) return;
-    const map = providerRef.current.getMap();
-    const updateHeatmap = () => {
-      try {
-        if (map.getLayer("heatmap-layer")) {
-          map.setLayoutProperty(
-            "heatmap-layer",
-            "visibility",
-            heatmapActive ? "visible" : "none",
-          );
-          // Dynamically adjust radius for weather-app spread effect
-          map.setPaintProperty("heatmap-layer", "heatmap-radius", [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            5, timelineActive ? 45 : 30,
-            10, timelineActive ? 70 : 50,
-            14, timelineActive ? 110 : 80,
-          ]);
-          map.setPaintProperty(
-            "heatmap-layer",
-            "heatmap-opacity",
-            timelineActive ? 0.85 : 0.8,
-          );
-        }
-      } catch {
-        /* layer may not exist yet */
-      }
-    };
-    if (map.isStyleLoaded()) {
-      updateHeatmap();
-    } else {
-      map.once("load", updateHeatmap);
-    }
-  }, [heatmapActive, timelineActive, tokenMissing]);
-
-  // Update markers and heatmap data
-  useEffect(() => {
-    if (!providerRef.current || !managerRef.current) return;
-    const map = providerRef.current.getMap();
-
-    const updateMap = () => {
-      if (!map.getSource("heatmap-source")) {
-        map.addSource("heatmap-source", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
-        });
-
-        map.addLayer({
-          id: "heatmap-layer",
-          type: "heatmap",
-          source: "heatmap-source",
-          layout: { visibility: heatmapActive ? "visible" : "none" },
-          paint: {
-            "heatmap-weight": ["get", "intensity"],
-            "heatmap-intensity": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              5, 1,
-              12, 3,
-            ],
-            "heatmap-color": [
-              "interpolate",
-              ["linear"],
-              ["heatmap-density"],
-              0, "rgba(0,0,0,0)",
-              0.1, "hsla(210, 80%, 60%, 0.3)",
-              0.3, "hsla(195, 70%, 50%, 0.5)",
-              0.5, "hsla(45, 95%, 55%, 0.6)",
-              0.7, "hsla(30, 90%, 55%, 0.7)",
-              1, "hsla(0, 85%, 55%, 0.85)",
-            ],
-            "heatmap-radius": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              5, timelineActive ? 45 : 30,
-              10, timelineActive ? 70 : 50,
-              14, timelineActive ? 110 : 80,
-            ],
-            "heatmap-opacity": timelineActive ? 0.85 : 0.8,
-          },
-        });
-      }
-
-      // Update heatmap source
-      const source = map.getSource("heatmap-source");
-      if (source) {
-        source.setData({
-          type: "FeatureCollection",
-          features: events
-            .filter((e) => e.lat && e.lng)
-            .map((e) => ({
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [e.lng, e.lat] },
-              properties: { intensity: e.severityLevel / 4 },
-            })),
-        });
-      }
-
-      // Build markers with tweet card tooltips
-      const managerMarkers = events
-        .filter((e) => e.lat && e.lng)
-        .map((event) => {
-          const severity = event.severity || "low";
-          const pinBg = SEVERITY_PIN_BG[severity] || "#3b82f666";
-
-          return {
-            id: event.id,
-            rank: event.severityLevel || 1,
-            lat: event.lat,
-            lng: event.lng,
-            pin: {
-              element: createPinElement(severity),
-              dimensions: { radius: 10, stroke: 2 },
-              style: {
-                stroke: "#ffffff",
-                background: pinBg,
-              },
-            },
-            tooltip: {
-              element: createTooltipElement(event),
-              dimensions: {
-                width: event.imageUrl ? 240 : 210,
-                height: event.imageUrl ? 240 : 130,
-                padding: 28,
-              },
-              style: {
-                background: "#0a0a0a",
-                radius: 10,
-                filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.4))",
-              },
-            },
-            popup: {
-              element: createPopupElement(event),
-              dimensions: {
-                width: event.imageUrl ? 320 : 300,
-                height: event.imageUrl ? 440 : 270,
-                padding: 8,
-              },
-              style: {
-                background: "#0a0a0a",
-                radius: 12,
-              },
-            },
-          };
-        });
-
-      // Set new markers (MapManager handles diffing automatically)
-      try {
-        managerRef.current.updateMarkers(managerMarkers);
-      } catch (err) {
-        console.error("Error updating markers:", err);
-      }
-    };
-
-    if (map.isStyleLoaded()) {
-      updateMap();
-    }
-    
-    map.on("style.load", updateMap);
-
-    return () => {
-      map.off("style.load", updateMap);
-    };
-  }, [events, tokenMissing, heatmapActive, isDarkMode, timelineActive]);
-
-  // Fly to selected event
-  useEffect(() => {
-    if (!providerRef.current || !selectedEvent?.lat || !selectedEvent?.lng)
-      return;
-    const map = providerRef.current.getMap();
-
-    map.flyTo({
-      center: [selectedEvent.lng, selectedEvent.lat],
-      zoom: 14,
-      duration: 1500,
-      essential: true,
-    });
-  }, [selectedEvent, tokenMissing]);
-
-  useEffect(() => {
-    if (!providerRef.current) return;
-    const map = providerRef.current.getMap();
-
-    const handleClick = (event) => {
-      if (!locationPickActive) return;
-      const coords = {
-        lat: event.lngLat.lat,
-        lng: event.lngLat.lng,
-      };
-      if (!isInsideGuwahati(coords.lat, coords.lng)) return;
-      onReportLocationPick?.(coords);
-    };
-
-    map.getCanvas().style.cursor = locationPickActive ? "crosshair" : "";
-    map.on("click", handleClick);
-
-    return () => {
-      map.off("click", handleClick);
-      map.getCanvas().style.cursor = "";
-    };
-  }, [locationPickActive, onReportLocationPick]);
-
-  useEffect(() => {
-    if (!providerRef.current) return;
-    const map = providerRef.current.getMap();
-
-    if (reportLocationMarkerRef.current) {
-      reportLocationMarkerRef.current.remove();
-      reportLocationMarkerRef.current = null;
-    }
-
-    if (!pickedReportLocation) return;
-
-    const el = document.createElement("div");
-    el.className = "report-location-marker";
-    reportLocationMarkerRef.current = new maplibregl.Marker({ element: el })
-      .setLngLat([pickedReportLocation.lng, pickedReportLocation.lat])
-      .addTo(map);
-
-    return () => {
-      if (reportLocationMarkerRef.current) {
-        reportLocationMarkerRef.current.remove();
-        reportLocationMarkerRef.current = null;
-      }
-    };
-  }, [pickedReportLocation]);
-
-  return (
-    <div className={`livemap-container ${locationPickActive ? "location-pick-active" : ""}`}>
-      <div
-        ref={mapContainer}
-        id="live-map"
-        style={{ width: "100%", height: "100%" }}
-      />
-
-      {locationPickActive && !tokenMissing && (
-        <div className="location-pick-banner">
-          <span>Click the incident location on the map</span>
-          <button type="button" onClick={onCancelLocationPick}>Cancel</button>
-        </div>
-      )}
-
-      {tokenMissing && (
+  if (tokenMissing) {
+    return (
+      <div className="livemap-container">
         <div
           className="map-overlay"
           style={{
@@ -566,8 +319,88 @@ export default function LiveMap({
             textAlign: "center",
           }}
         >
-          <p>Set VITE_ARENARIUM_TOKEN in a .env file to load the map.</p>
-          <p>Example: VITE_ARENARIUM_TOKEN=your_token_here</p>
+          <p>Set VITE_GOOGLE_MAPS_API_KEY in a .env file to load the map.</p>
+        </div>
+      </div>
+    );
+  }
+
+  const mapOptions = {
+    restriction: {
+      latLngBounds: GUWAHATI_BOUNDS,
+      strictBounds: false,
+    },
+    disableDefaultUI: true,
+    zoomControl: true,
+  };
+
+  const handleMapClick = (e) => {
+    if (!locationPickActive) return;
+    const lat = e.detail.latLng.lat;
+    const lng = e.detail.latLng.lng;
+    if (isInsideGuwahati(lat, lng)) {
+      onReportLocationPick?.({ lat, lng });
+    }
+  };
+
+  return (
+    <div className={`livemap-container ${locationPickActive ? "location-pick-active" : ""}`}>
+      <APIProvider apiKey={apiKey} libraries={["visualization"]} version="3.64">
+        <Map
+          defaultCenter={GUWAHATI_CENTER}
+          defaultZoom={12}
+          center={mapCenter}
+          onCenterChanged={e => setMapCenter(e.detail.center)}
+          zoom={mapZoom}
+          onZoomChanged={e => setMapZoom(e.detail.zoom)}
+          mapId="vayuai-map"
+          options={mapOptions}
+          colorScheme={isDarkMode ? "DARK" : "LIGHT"}
+          onClick={handleMapClick}
+          style={{ width: "100%", height: "100%" }}
+          gestureHandling="greedy"
+        >
+          <MyLocationControl setMapCenter={setMapCenter} setMapZoom={setMapZoom} />
+          
+          <HeatmapLayer events={events} heatmapActive={heatmapActive} />
+
+          {!heatmapActive && events.filter(e => e.lat && e.lng && e.isUserSubmitted).map(event => {
+            const severity = event.severity || "low";
+            const bg = SEVERITY_PIN_BG[severity] || SEVERITY_PIN_BG.low;
+            return (
+              <AdvancedMarker
+                key={event.id}
+                position={{ lat: event.lat, lng: event.lng }}
+                onClick={() => setSelectedMarker(event)}
+              >
+                <Pin background={bg} borderColor={"#ffffff"} glyphColor={"#ffffff"} />
+              </AdvancedMarker>
+            );
+          })}
+
+          {pickedReportLocation && (
+            <AdvancedMarker position={{ lat: pickedReportLocation.lat, lng: pickedReportLocation.lng }}>
+              <Pin background={"#000000"} borderColor={"#ffffff"} glyphColor={"#ffffff"} />
+            </AdvancedMarker>
+          )}
+
+          {selectedMarker && (
+            <InfoWindow
+              position={{ lat: selectedMarker.lat, lng: selectedMarker.lng }}
+              onCloseClick={() => setSelectedMarker(null)}
+              headerDisabled={true}
+              style={{ padding: 0 }}
+            >
+              <CustomInfoWindow event={selectedMarker} onClose={() => setSelectedMarker(null)} />
+            </InfoWindow>
+          )}
+        </Map>
+      </APIProvider>
+
+      {locationPickActive && (
+        <div className="location-pick-banner">
+          <span>Click the incident location on the map</span>
+          <button type="button" onClick={onCancelLocationPick}>Cancel</button>
         </div>
       )}
     </div>
