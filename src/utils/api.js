@@ -113,6 +113,75 @@ export async function fetchMunicipalBrief() {
   return res.json();
 }
 
+// --- Municipality CRUD APIs (require auth token) ---
+
+async function authHeaders(user) {
+  if (!user) throw new Error("Not authenticated");
+  const token = await user.getIdToken();
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  };
+}
+
+export async function fetchMunicipalDashboard(user) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/municipality/dashboard`, { headers });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function fetchMunicipalEvents(user, filters = {}) {
+  const headers = await authHeaders(user);
+  const params = new URLSearchParams();
+  if (filters.status) params.set('status', filters.status);
+  if (filters.severity) params.set('severity', filters.severity);
+  if (filters.type) params.set('type', filters.type);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const res = await fetch(`${API_BASE}/municipality/events${qs}`, { headers });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function updateEventStatus(user, eventId, status) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/municipality/events/${eventId}/status`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function assignEventWorker(user, eventId, workerUid) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/municipality/events/${eventId}/assign`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ workerUid }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function deleteEventById(user, eventId) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/municipality/events/${eventId}`, {
+    method: 'DELETE',
+    headers,
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function fetchWorkers(user) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/municipality/workers`, { headers });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
 export function createEventStream(onEvent) {
   const es = new EventSource(`${API_BASE}/events/stream`);
   es.onmessage = (e) => {

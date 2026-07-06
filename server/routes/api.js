@@ -3,6 +3,7 @@ import eventRoutes from "./eventRoutes.js";
 import statsRoutes from "./statsRoutes.js";
 import simulationRoutes from "./simulationRoutes.js";
 import authRoutes from "./authRoutes.js";
+import municipalityRoutes from "./municipalityRoutes.js";
 import { postTweet, postAiWrite } from "../controllers/tweetController.js";
 import { getHeatmap, getLocations } from "../controllers/eventController.js";
 
@@ -13,6 +14,7 @@ router.use("/events", eventRoutes);
 router.use("/", statsRoutes);
 router.use("/simulation", simulationRoutes);
 router.use("/auth", authRoutes);
+router.use("/municipality", municipalityRoutes);
 
 // Top-level endpoints the frontend expects at /api/heatmap and /api/locations
 router.get("/heatmap", getHeatmap);
