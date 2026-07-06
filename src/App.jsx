@@ -3,9 +3,11 @@ import LiveMap from "./components/LiveMap";
 import LiveFeed from "./components/LiveFeed";
 import AlertBanner from "./components/AlertBanner";
 import AddTweetModal from "./components/AddTweetModal";
+import AuthModal from "./components/AuthModal";
 import HotspotPanel from "./components/HotspotPanel";
 import PredictionPanel from "./components/PredictionPanel";
 import MunicipalPanel from "./components/MunicipalPanel";
+import { useAuth } from "./context/AuthContext";
 import {
   fetchEvents,
   fetchHotspots,
@@ -26,7 +28,9 @@ export default function App() {
   const [criticalAlert, setCriticalAlert] = useState(null);
   const isDarkMode = true;
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
+  const { currentUser, userRole, logout } = useAuth();
   const [feedOpen, setFeedOpen] = useState(false);
   const [sensorsActive, setSensorsActive] = useState(true);
   const [hotspotsActive, setHotspotsActive] = useState(false);
@@ -293,12 +297,23 @@ export default function App() {
           <button
             className={`cb-btn ${isAddModalOpen ? "cb-active" : ""}`}
             onClick={() => {
+              if (!currentUser) {
+                setIsAuthModalOpen(true);
+                return;
+              }
               setIsAddModalOpen(true);
               setIsPickingReportLocation(false);
               setMapOpen(true); // Switch to map when reporting
             }}
           >
             Report
+          </button>
+          <button
+            className="cb-btn"
+            onClick={() => currentUser ? logout() : setIsAuthModalOpen(true)}
+            style={{ marginLeft: 'auto' }}
+          >
+            {currentUser ? 'Logout' : 'Login'}
           </button>
         </div>
       </div>
@@ -314,6 +329,12 @@ export default function App() {
         />
       )}
 
+      {/* Auth Modal Overlay */}
+      {isAuthModalOpen && (
+        <AuthModal onClose={() => setIsAuthModalOpen(false)} />
+      )}
+
+      {/* Add Tweet Modal Overlay */}
       {isAddModalOpen && (
         <AddTweetModal
           onClose={handleCloseReport}

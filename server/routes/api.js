@@ -3,6 +3,7 @@ import { getEvents, getRecentEvents, getFilteredEvents, getHeatmap, getLocations
 import { getStats, getTrends, getSensors, getWeather, getHotspots, getPredictions, getMunicipalBrief } from "../controllers/statsController.js";
 import { postTweet, postAiWrite } from "../controllers/tweetController.js";
 import { simulateBatch, startSimulationAPI, stopSimulationAPI, getSimulationStatus } from "../controllers/simulationController.js";
+import { verifyToken, requireRole } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -32,5 +33,17 @@ router.post("/simulate", simulateBatch);
 router.post("/simulation/start", startSimulationAPI);
 router.post("/simulation/stop", stopSimulationAPI);
 router.get("/simulation/status", getSimulationStatus);
+
+// Auth test route
+router.get("/auth/me", verifyToken, (req, res) => {
+  res.json({
+    message: "You are authenticated!",
+    user: {
+      uid: req.user.uid,
+      email: req.user.email,
+      role: req.user.role,
+    }
+  });
+});
 
 export default router;
