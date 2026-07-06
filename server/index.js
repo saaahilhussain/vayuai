@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import apiRoutes from "./routes/api.js";
 import { seedHistoricalData, startSimulationFunc } from "./controllers/simulationController.js";
+import { store } from "./services/shared.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,8 +36,15 @@ app.get("/*splat", (req, res) => {
 });
 
 // --- Start ---
-seedHistoricalData().then(() => {
-  startSimulationFunc();
+// Initialize Firestore store, then seed only if empty
+store.init().then(() => {
+  if (store.getAll().length === 0) {
+    console.log("🌱 No existing events in Firestore, seeding historical data...");
+    seedHistoricalData().then(() => startSimulationFunc());
+  } else {
+    console.log(`♻️  Loaded ${store.getAll().length} persisted events, skipping seed.`);
+    startSimulationFunc();
+  }
 });
 
 app.listen(PORT, () => {

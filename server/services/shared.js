@@ -1,7 +1,7 @@
-import { EventStore } from "../models/eventStore.js";
+import { FirestoreEventStore } from "../models/firestoreEventStore.js";
 import { SensorGrid } from "./sensorGrid.js";
 
-export const store = new EventStore(500);
+export const store = new FirestoreEventStore(500);
 export const sensorGrid = new SensorGrid();
 export const sseClients = [];
 
