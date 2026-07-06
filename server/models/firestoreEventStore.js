@@ -35,10 +35,17 @@ function textSimilarity(a, b) {
 }
 
 /**
- * Strip fields that Firestore cannot store (undefined values, circular refs).
+ * Strip fields that Firestore cannot store (undefined values, circular refs)
+ * and remove large base64 data that shouldn't be persisted in Firestore.
  */
 function sanitizeForFirestore(obj) {
-  return JSON.parse(JSON.stringify(obj));
+  const cleaned = JSON.parse(JSON.stringify(obj));
+  // Remove base64 image data — the Storage URL is in imageUrl
+  delete cleaned.imageDataUrl;
+  delete cleaned.videoFrames;
+  // Remove firestoreId (internal tracking field)
+  delete cleaned.firestoreId;
+  return cleaned;
 }
 
 class FirestoreEventStore {

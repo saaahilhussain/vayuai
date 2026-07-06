@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { postCustomTweet, fetchLocations, aiWriteReport } from "../utils/api";
+import { useAuth } from "../context/AuthContext";
 import "./AddTweetModal.css";
 
 const GUWAHATI_BOUNDS = {
@@ -39,6 +40,7 @@ export default function AddTweetModal({
   const [aiWriteStatus, setAiWriteStatus] = useState("idle"); // idle, loading
   const [mismatchWarning, setMismatchWarning] = useState("");
   const hasReportInput = text.trim().length > 0 || Boolean(imageDataUrl) || Boolean(videoFrames);
+  const { currentUser } = useAuth();
 
   const [allLocations, setAllLocations] = useState([]);
   const [suggestions, setSuggestions] = useState([]);

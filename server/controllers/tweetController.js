@@ -242,7 +242,7 @@ export async function processTweet(tweet) {
 }
 
 export async function postTweet(req, res) {
-  const { text, handle, location, imageDataUrl, videoFrames, imageMeta, locationCoords } = req.body;
+  const { text, handle, location, imageDataUrl, videoFrames, imageMeta, locationCoords, storageUrl } = req.body;
 
   if (!text && !imageDataUrl && !videoFrames) {
     return res.status(400).json({ error: "Missing required fields." });
@@ -258,6 +258,7 @@ export async function postTweet(req, res) {
     engagement: { likes: 0, retweets: 0, replies: 0, views: 0 },
     accountMeta: { isVerified: false, followerCount: 100, accountAgeDays: 365 },
     imageDataUrl: imageDataUrl || null,
+    imageUrl: storageUrl || null, // Prefer Firebase Storage URL over base64
     videoFrames: videoFrames || null,
     imageMeta: imageMeta || null,
     locationCoords: normalizeCoords(locationCoords),

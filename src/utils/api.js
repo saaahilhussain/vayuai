@@ -60,6 +60,7 @@ export async function postCustomTweet(
   videoFrames = null,
   imageMeta = null,
   locationCoords = null,
+  storageUrl = null,
 ) {
   const res = await fetch(`${API_BASE}/tweet`, {
     method: 'POST',
@@ -72,6 +73,7 @@ export async function postCustomTweet(
       videoFrames,
       imageMeta,
       locationCoords,
+      storageUrl,
     }),
   });
   return res.json();
