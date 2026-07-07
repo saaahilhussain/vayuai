@@ -104,7 +104,7 @@ export default function MunicipalPanel({
       const enrichedWorkers = (workersData.workers || []).map(w => ({
         ...w,
         teamStrength: w.teamStrength || 1,
-        status: w.manualStatus === 'idle' ? 'idle' : (eventsData.events.some(e => e.assignedTo === w.uid && !['resolved', 'cleanup_done'].includes(e.status)) ? 'busy' : 'idle'),
+        status: w.manualStatus === 'idle' ? 'idle' : (  eventsData.events.some(e => e.assignedTo === w.uid && !['resolved', 'cleanup_done'].includes(e.status)) ? 'busy' : 'idle'),
         assignedCount: eventsData.events.filter(e => e.assignedTo === w.uid).length
       }));
       setWorkers(enrichedWorkers);

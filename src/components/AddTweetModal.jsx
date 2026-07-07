@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { APIProvider, useMapsLibrary } from "@vis.gl/react-google-maps";
 import { postCustomTweet, postVoiceTweet, fetchLocations, aiWriteReport } from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 import "./AddTweetModal.css";
@@ -19,7 +20,7 @@ function isInsideGuwahati(lat, lng) {
   );
 }
 
-export default function AddTweetModal({
+function AddTweetModalContent({
   onClose,
   isPickingLocation,
   pickedLocation,
@@ -43,6 +44,32 @@ export default function AddTweetModal({
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isVideoRecording, setIsVideoRecording] = useState(false);
   
+  // New State variables for Extended Citizen Report
+  const [reporterName, setReporterName] = useState("");
+  const [city, setCity] = useState("");
+  const [pincode, setPincode] = useState("");
+  const [state, setStateName] = useState("");
+  const [wasteCategories, setWasteCategories] = useState([]);
+  const [reportDate, setReportDate] = useState(""); // Empty by default
+  const [publishConsent, setPublishConsent] = useState(false);
+
+  const toggleCategory = (cat) => {
+    setWasteCategories(prev => 
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
+    );
+  };
+
+  const CATEGORY_OPTIONS = [
+    "Garbage dump fires",
+    "Illegal waste burning",
+    "Industrial smoke emissions",
+    "Construction dust",
+    "Smog accumulation at busy traffic junctions",
+    "Localized pollution pockets",
+    "Other"
+  ];
+
+  
   const hasReportInput = text.trim().length > 0 || Boolean(imageDataUrl) || Boolean(videoFrames) || Boolean(audioDataUrl);
   const { currentUser } = useAuth();
   
@@ -57,12 +84,92 @@ export default function AddTweetModal({
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const wrapperRef = useRef(null);
+  
+  const placesLib = useMapsLibrary("places");
+  const [autocompleteService, setAutocompleteService] = useState(null);
+
+  useEffect(() => {
+    if (placesLib) {
+      setAutocompleteService(new placesLib.AutocompleteService());
+    }
+  }, [placesLib]);
+  const geocodingLib = useMapsLibrary("geocoding");
+  const [geocoderService, setGeocoderService] = useState(null);
+
+  useEffect(() => {
+    if (geocodingLib) {
+      setGeocoderService(new geocodingLib.Geocoder());
+    }
+  }, [geocodingLib]);
+
+  const reverseGeocode = async (coords) => {
+    let geocoder = geocoderService;
+    if (!geocoder && window.google?.maps?.Geocoder) {
+      geocoder = new window.google.maps.Geocoder();
+    }
+    
+    if (geocoder) {
+      try {
+        const response = await new Promise((resolve, reject) => {
+          geocoder.geocode({ location: coords }, (results, status) => {
+            if (status === "OK") resolve({ results });
+            else reject(new Error(status));
+          });
+        });
+        if (response.results && response.results.length > 0) {
+          const result = response.results[0];
+          
+          let extractedCity = "";
+          let extractedState = "";
+          let extractedPin = "";
+          
+          result.address_components.forEach(comp => {
+            if (comp.types.includes("locality")) extractedCity = comp.long_name;
+            if (comp.types.includes("administrative_area_level_1")) extractedState = comp.long_name;
+            if (comp.types.includes("postal_code")) extractedPin = comp.long_name;
+          });
+
+          const street = result.formatted_address.split(',')[0];
+          setLocation(street); 
+          if (extractedCity) setCity(extractedCity);
+          if (extractedState) setStateName(extractedState);
+          if (extractedPin) setPincode(extractedPin);
+          return; // Success
+        }
+      } catch (e) {
+        console.warn("Google Geocoding failed, falling back to OSM:", e);
+      }
+    }
+
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.lat}&lon=${coords.lng}`);
+      if (!response.ok) throw new Error("Network response was not ok");
+      const data = await response.json();
+      
+      if (data && data.address) {
+        const { road, town, city, suburb, state, postcode, neighbourhood } = data.address;
+        
+        const street = road || neighbourhood || suburb || data.display_name.split(',')[0];
+        const extractedCity = city || town || suburb || "";
+        const extractedState = state || "";
+        const extractedPin = postcode || "";
+
+        setLocation(street); 
+        if (extractedCity) setCity(extractedCity);
+        if (extractedState) setStateName(extractedState);
+        if (extractedPin) setPincode(extractedPin);
+      }
+    } catch (e) {
+      console.error("Geocoding failed entirely", e);
+      setMessage("Geocoding failed: " + e.message);
+    }
+  };
 
   useEffect(() => {
     fetchLocations().then(setAllLocations).catch(console.error);
   }, []);
 
-  const requestBrowserLocation = useCallback(() => {
+  const requestBrowserLocation = () => {
     if (!navigator.geolocation) {
       setLocationStatus("manual");
       setMessage(
@@ -88,6 +195,7 @@ export default function AddTweetModal({
         }
         setLocationCoords(coords);
         setLocation("Current location");
+        reverseGeocode(coords);
         setLocationStatus("detected");
         setMessage("");
       },
@@ -99,18 +207,16 @@ export default function AddTweetModal({
       },
       { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 },
     );
-  }, []);
+  };
 
-  useEffect(() => {
-    const timer = window.setTimeout(requestBrowserLocation, 0);
-    return () => window.clearTimeout(timer);
-  }, [requestBrowserLocation]);
+  // Location auto-detection on mount is disabled per user request
 
   useEffect(() => {
     if (!pickedLocation) return;
     const timer = window.setTimeout(() => {
       setLocationCoords(pickedLocation);
       setLocation("Pinned location");
+      reverseGeocode(pickedLocation);
       setLocationStatus("pinned");
       setMessage("");
     }, 0);
@@ -135,12 +241,34 @@ export default function AddTweetModal({
       onClearPickedLocation?.();
       setLocationStatus("manual");
     }
+    
     if (val.length > 0) {
-      const filtered = allLocations.filter((loc) =>
-        loc.toLowerCase().includes(val.toLowerCase()),
-      );
-      setSuggestions(filtered);
-      setShowSuggestions(true);
+      if (autocompleteService) {
+        autocompleteService.getPlacePredictions({
+          input: val,
+          componentRestrictions: { country: "in" },
+          locationBias: {
+            north: 26.35,
+            south: 25.95,
+            west: 91.45,
+            east: 92.05,
+          }
+        }, (predictions, status) => {
+          if (status === "OK" && predictions) {
+            setSuggestions(predictions.map(p => p.description));
+            setShowSuggestions(true);
+          } else {
+            setSuggestions([]);
+            setShowSuggestions(false);
+          }
+        });
+      } else {
+        const filtered = allLocations.filter((loc) =>
+          loc.toLowerCase().includes(val.toLowerCase()),
+        );
+        setSuggestions(filtered);
+        setShowSuggestions(true);
+      }
     } else {
       setShowSuggestions(false);
     }
@@ -477,19 +605,32 @@ export default function AddTweetModal({
           locationCoords,
           currentUser?.uid
         );
-      } else {
-        response = await postCustomTweet(
-          text,
-          currentUser?.email || "@citizen",
-          location,
-          videoFrames ? null : imageDataUrl,
-          videoFrames,
-          imageMeta,
-          locationCoords,
-          null, // storageUrl
-          currentUser?.uid
-        );
+        storageUrl = response.url;
       }
+
+      const detailedLocation = {
+        street: location,
+        city: "",
+        pincode: "",
+        state: ""
+      };
+
+      response = await postCustomTweet(
+        text,
+        currentUser ? currentUser.email : "@citizen",
+        location,
+        imageDataUrl,
+        videoFrames,
+        imageMeta,
+        locationCoords,
+        storageUrl,
+        currentUser ? currentUser.uid : null,
+        reporterName,
+        detailedLocation,
+        wasteCategories,
+        reportDate,
+        publishConsent
+      );
 
       if (response.accepted) {
         setStatus("success");
@@ -518,7 +659,7 @@ export default function AddTweetModal({
 
   return (
     <div className="modal-backdrop">
-      <div className="add-tweet-modal glass-panel">
+      <div className="add-tweet-modal glass-panel" style={{ maxWidth: '600px', width: '95%', boxSizing: 'border-box', overflowX: 'hidden' }}>
         <div className="modal-header">
           <h3>Report Pollution</h3>
           <button
@@ -531,6 +672,18 @@ export default function AddTweetModal({
         </div>
 
         <form onSubmit={handleSubmit} className="modal-form">
+          <div className="form-group">
+            <label>Full Name</label>
+            <input
+              type="text"
+              value={reporterName}
+              onChange={(e) => setReporterName(e.target.value)}
+              placeholder="Enter your full name"
+              disabled={status === "loading"}
+              required
+            />
+          </div>
+
           <div
             className="form-group"
             ref={wrapperRef}
@@ -538,12 +691,12 @@ export default function AddTweetModal({
           >
             <label>Location</label>
             <input
-              type="text"
               value={location}
               onChange={handleLocationChange}
               onFocus={() => location.length > 0 && setShowSuggestions(true)}
-              placeholder="e.g. Fancy Bazaar"
+              placeholder="Street / Area Name (e.g. Fancy Bazaar)"
               disabled={status === "loading"}
+              required
               autoComplete="off"
             />
             {showSuggestions && suggestions.length > 0 && (
@@ -555,6 +708,36 @@ export default function AddTweetModal({
                 ))}
               </ul>
             )}
+          </div>
+
+          <div className="form-group" style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '10px', marginTop: '10px' }}>
+            <input 
+              type="text" 
+              value={city} 
+              onChange={e => setCity(e.target.value)} 
+              placeholder="City" 
+              disabled={status === "loading"} 
+              style={{ flex: '1 1 120px', boxSizing: 'border-box' }} 
+              required
+            />
+            <input 
+              type="text" 
+              value={pincode} 
+              onChange={e => setPincode(e.target.value)} 
+              placeholder="Pincode" 
+              disabled={status === "loading"} 
+              style={{ flex: '1 1 100px', boxSizing: 'border-box' }} 
+              required
+            />
+            <input 
+              type="text" 
+              value={state} 
+              onChange={e => setStateName(e.target.value)} 
+              placeholder="State" 
+              disabled={status === "loading"} 
+              style={{ flex: '1 1 120px', boxSizing: 'border-box' }} 
+              required
+            />
           </div>
 
           <div className="form-group">
@@ -589,6 +772,43 @@ export default function AddTweetModal({
           </div>
 
           <div className="form-group">
+            <label>Pollution Categories</label>
+            <div className="category-badges" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {CATEGORY_OPTIONS.map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => toggleCategory(cat)}
+                  disabled={status === "loading"}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '20px',
+                    border: '1px solid #4b5563',
+                    background: wasteCategories.includes(cat) ? '#3b82f6' : 'transparent',
+                    color: wasteCategories.includes(cat) ? '#ffffff' : '#9ca3af',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Report Date</label>
+            <input
+              type="date"
+              value={reportDate}
+              onChange={(e) => setReportDate(e.target.value)}
+              placeholder="DD/MM/YYYY"
+              disabled={status === "loading"}
+              required
+            />
+          </div>
+
+          <div className="form-group">
             <div className="ai-write-label-row">
               <label>Report Content</label>
               <div style={{display: 'flex', gap: '8px'}}>
@@ -597,6 +817,19 @@ export default function AddTweetModal({
                   className={`btn-voice ${isRecording ? 'recording' : ''}`}
                   onClick={toggleRecording}
                   disabled={status === "loading"}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 12px',
+                    background: isRecording ? '#ef4444' : '#1e293b',
+                    color: isRecording ? '#ffffff' : '#60a5fa',
+                    border: `1px solid ${isRecording ? '#ef4444' : '#3b82f6'}`,
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                    transition: 'all 0.2s'
+                  }}
                 >
                   {isRecording ? "⏹ Stop Recording" : "🎤 Voice Report"}
                 </button>
@@ -728,5 +961,17 @@ export default function AddTweetModal({
         </form>
       </div>
     </div>
+  );
+}
+
+export default function AddTweetModal(props) {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  if (!apiKey || apiKey === "your_token_here") {
+    return <AddTweetModalContent {...props} />;
+  }
+  return (
+    <APIProvider apiKey={apiKey}>
+      <AddTweetModalContent {...props} />
+    </APIProvider>
   );
 }

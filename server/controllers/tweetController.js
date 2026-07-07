@@ -230,6 +230,11 @@ export async function processTweetDetailed(tweet) {
       imageMeta: tweet.imageMeta || null,
       imageAnalysis,
       citizenUid: tweet.citizenUid || null,
+      reporterName: tweet.reporterName || null,
+      detailedLocation: tweet.detailedLocation || null,
+      wasteCategories: tweet.wasteCategories || [],
+      reportDate: tweet.reportDate || null,
+      publishConsent: tweet.publishConsent || false,
     },
     reason: null,
     nlp,
@@ -243,7 +248,11 @@ export async function processTweet(tweet) {
 }
 
 export async function postTweet(req, res) {
-  const { text, handle, location, imageDataUrl, videoFrames, imageMeta, locationCoords, storageUrl, citizenUid } = req.body;
+  const { 
+    text, handle, location, imageDataUrl, videoFrames, imageMeta, 
+    locationCoords, storageUrl, citizenUid, 
+    reporterName, detailedLocation, wasteCategories, reportDate, publishConsent 
+  } = req.body;
 
   if (!text && !imageDataUrl && !videoFrames) {
     return res.status(400).json({ error: "Missing required fields." });
@@ -264,6 +273,11 @@ export async function postTweet(req, res) {
     imageMeta: imageMeta || null,
     locationCoords: normalizeCoords(locationCoords),
     citizenUid: citizenUid || null,
+    reporterName: reporterName || null,
+    detailedLocation: detailedLocation || null,
+    wasteCategories: wasteCategories || [],
+    reportDate: reportDate || null,
+    publishConsent: publishConsent || false,
   };
 
   const result = await processTweetDetailed(tweet);
