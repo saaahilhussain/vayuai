@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import "./WorkerPanel.css"; // Reuse styling where possible
 import { useAuth } from "../context/AuthContext";
-import { POLLUTION_TYPES, timeAgo, fetchCitizenEvents, submitEventFeedback } from "../utils/api";
+import { POLLUTION_TYPES, timeAgo, fetchCitizenEvents, submitEventFeedback, deleteCitizenEvent } from "../utils/api";
 
 const STATUS_CONFIG = {
   pending_review: { label: "Under Review", color: "#6b7280", icon: "🕒" },
@@ -27,6 +27,7 @@ export default function CitizenPanel({ onClose }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [feedbackLoading, setFeedbackLoading] = useState(null);
+  const [deletingEventId, setDeletingEventId] = useState(null);
 
   const loadEvents = useCallback(async () => {
     if (!currentUser) return;
@@ -58,8 +59,37 @@ export default function CitizenPanel({ onClose }) {
     }
   };
 
+  const handleDelete = (eventId) => {
+    setDeletingEventId(eventId);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingEventId) return;
+    try {
+      await deleteCitizenEvent(currentUser, deletingEventId);
+      await loadEvents();
+      setDeletingEventId(null);
+    } catch (err) {
+      alert(`Delete failed: ${err.message}`);
+    }
+  };
+
   return (
-    <div className="worker-panel">
+    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 9999 }}>
+      <div 
+        className="worker-panel" 
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: 'relative',
+          top: 'auto',
+          right: 'auto',
+          width: '95%',
+          maxWidth: '900px',
+          height: '85vh',
+          maxHeight: '85vh',
+          margin: '0 auto'
+        }}
+      >
       <div className="wp-header">
         <div className="wp-header-content">
           <div className="wp-header-title">
@@ -112,15 +142,38 @@ export default function CitizenPanel({ onClose }) {
                       <span>{pollCfg.icon}</span>
                       <span className="wp-card-type-label">{pollCfg.label}</span>
                     </div>
-                    <span
-                      className="wp-status-badge"
-                      style={{
-                        background: `${statusCfg.color}22`,
-                        color: statusCfg.color,
-                      }}
-                    >
-                      {statusCfg.icon} {statusCfg.label}
-                    </span>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <span
+                        className="wp-status-badge"
+                        style={{
+                          background: `${statusCfg.color}22`,
+                          color: statusCfg.color,
+                        }}
+                      >
+                        {statusCfg.icon} {statusCfg.label}
+                      </span>
+                      <button 
+                        onClick={() => handleDelete(event.id)}
+                        title="Delete Complaint"
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.1)',
+                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.2s ease',
+                          fontSize: '14px'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'}
+                        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                      >
+                        🗑️
+                      </button>
+                    </div>
                   </div>
 
                   <div className="wp-card-details">
@@ -191,7 +244,35 @@ export default function CitizenPanel({ onClose }) {
             })}
           </div>
         )}
+        </div>
       </div>
+
+      {deletingEventId && (
+        <div className="auth-overlay" onClick={() => setDeletingEventId(null)} style={{ zIndex: 10000 }}>
+          <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="auth-header">
+              <h2>Confirm Deletion</h2>
+              <p>Are you sure you want to delete this complaint?</p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+              <button 
+                className="cb-btn cb-active" 
+                style={{ flex: 1, justifyContent: 'center', background: 'rgba(239, 68, 68, 0.2)', borderColor: 'rgba(239, 68, 68, 0.5)', color: '#f87171' }}
+                onClick={confirmDelete}
+              >
+                Yes, Delete
+              </button>
+              <button 
+                className="cb-btn" 
+                style={{ flex: 1, justifyContent: 'center' }}
+                onClick={() => setDeletingEventId(null)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

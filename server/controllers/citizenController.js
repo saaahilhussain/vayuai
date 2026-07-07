@@ -39,3 +39,20 @@ export function addFeedback(req, res) {
 
   res.json({ success: true, event });
 }
+
+export function deleteCitizenEvent(req, res) {
+  const { id } = req.params;
+  const event = store.getAll().find((e) => e.id === id);
+  if (!event) return res.status(404).json({ error: "Event not found" });
+
+  if (event.citizenUid !== req.user.uid) {
+    return res.status(403).json({ error: "Not authorized to delete this event" });
+  }
+
+  const success = store.deleteEvent(id);
+  if (success) {
+    res.json({ success: true });
+  } else {
+    res.status(500).json({ error: "Failed to delete event" });
+  }
+}

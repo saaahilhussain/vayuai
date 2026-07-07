@@ -193,6 +193,22 @@ class FirestoreEventStore {
     return this.events;
   }
 
+  deleteEvent(id) {
+    const idx = this.events.findIndex((e) => e.id === id);
+    if (idx !== -1) {
+      const event = this.events[idx];
+      this.events.splice(idx, 1);
+      
+      if (event.firestoreId) {
+        adminDb.collection(COLLECTION).doc(event.firestoreId)
+          .delete()
+          .catch((err) => console.error("Firestore delete failed:", err.message));
+      }
+      return true;
+    }
+    return false;
+  }
+
   getRecent(count = 50) {
     return this.events.slice(-count);
   }

@@ -404,17 +404,7 @@ export default function AddTweetModal({
   };
 
   if (isPickingLocation) {
-    return (
-      <div className="report-minimized">
-        <div>
-          <strong>Pick report location</strong>
-          <span>Click the main map to place the report pin.</span>
-        </div>
-        <button type="button" onClick={onCancelPinLocation}>
-          Back
-        </button>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -571,11 +561,7 @@ export default function AddTweetModal({
 
           {message && (
             <div className={`status-message ${status}`}>
-              {status === "success"
-                ? "OK: "
-                : status === "error"
-                  ? "Rejected: "
-                  : ""}
+              {status === "success" && "OK: "}
               {message}
             </div>
           )}

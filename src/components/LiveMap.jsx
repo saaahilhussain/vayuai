@@ -296,6 +296,146 @@ const MyLocationControl = ({ setMapCenter, setMapZoom }) => {
   );
 };
 
+const MapSearchBar = () => {
+  const map = useMap();
+  const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  
+  useEffect(() => {
+    if (query.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    const delay = setTimeout(async () => {
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`);
+        const data = await res.json();
+        setSuggestions(data || []);
+        setShowDropdown(true);
+      } catch (err) {
+        // ignore
+      }
+    }, 500); // Debounce
+    return () => clearTimeout(delay);
+  }, [query]);
+
+  const selectLocation = (lat, lon, displayName) => {
+    setQuery(displayName);
+    setShowDropdown(false);
+    map.panTo({ lat: parseFloat(lat), lng: parseFloat(lon) });
+    map.setZoom(16);
+  };
+  
+  const search = async (e) => {
+    e.preventDefault();
+    if(!query.trim()) return;
+    if (suggestions.length > 0) {
+       selectLocation(suggestions[0].lat, suggestions[0].lon, suggestions[0].display_name);
+       return;
+    }
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if(data && data.length > 0) {
+        selectLocation(data[0].lat, data[0].lon, data[0].display_name);
+      } else {
+        alert("Location not found");
+      }
+    } catch (err) {
+      alert("Search failed");
+    }
+  };
+
+  return (
+    <div style={{ padding: '10px', position: 'relative' }}>
+      <form onSubmit={search} style={{ 
+        display: 'flex', 
+        gap: '8px', 
+        background: 'rgba(15, 23, 42, 0.95)', 
+        padding: '8px', 
+        borderRadius: '8px', 
+        border: '1px solid rgba(56, 189, 248, 0.3)',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+        backdropFilter: 'blur(8px)',
+      }}>
+         <input 
+           type="text" 
+           placeholder="Search any location..." 
+           value={query}
+           onChange={e => setQuery(e.target.value)}
+           onFocus={() => setShowDropdown(true)}
+           onBlur={() => setTimeout(() => setShowDropdown(false), 200)}
+           style={{ 
+             background: 'rgba(0,0,0,0.5)', 
+             border: '1px solid rgba(255,255,255,0.1)', 
+             color: 'white', 
+             padding: '8px 12px', 
+             borderRadius: '6px', 
+             outline: 'none',
+             minWidth: '250px',
+             fontFamily: 'Inter, sans-serif'
+           }}
+         />
+         <button 
+           type="submit" 
+           style={{ 
+             background: 'rgba(56, 189, 248, 0.2)', 
+             border: '1px solid rgba(56, 189, 248, 0.4)', 
+             color: '#38bdf8',
+             padding: '8px 16px',
+             borderRadius: '6px',
+             cursor: 'pointer',
+             fontWeight: 600,
+             transition: 'all 0.2s ease'
+           }}
+           onMouseOver={e => e.currentTarget.style.background = 'rgba(56, 189, 248, 0.3)'}
+           onMouseOut={e => e.currentTarget.style.background = 'rgba(56, 189, 248, 0.2)'}
+         >
+           Find
+         </button>
+      </form>
+
+      {showDropdown && suggestions.length > 0 && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          left: '10px',
+          right: '10px',
+          background: 'rgba(15, 23, 42, 0.95)',
+          border: '1px solid rgba(56, 189, 248, 0.3)',
+          borderRadius: '8px',
+          marginTop: '4px',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+          maxHeight: '200px',
+          overflowY: 'auto',
+          zIndex: 1000,
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          {suggestions.map((s, i) => (
+            <div 
+              key={i} 
+              onClick={() => selectLocation(s.lat, s.lon, s.display_name)}
+              style={{
+                padding: '10px 12px',
+                color: '#e2e8f0',
+                cursor: 'pointer',
+                borderBottom: i === suggestions.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                fontSize: '13px'
+              }}
+              onMouseOver={e => e.currentTarget.style.background = 'rgba(56, 189, 248, 0.1)'}
+              onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+            >
+              {s.display_name}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function LiveMap({
   events,
   heatmapActive,
@@ -389,9 +529,9 @@ export default function LiveMap({
           defaultCenter={GUWAHATI_CENTER}
           defaultZoom={12}
           center={mapCenter}
-          onCenterChanged={e => setMapCenter(e.detail.center)}
+          onCenterChanged={(e) => setMapCenter(e.detail.center)}
           zoom={mapZoom}
-          onZoomChanged={e => setMapZoom(e.detail.zoom)}
+          onZoomChanged={(e) => setMapZoom(e.detail.zoom)}
           mapId="vayuai-map"
           options={mapOptions}
           colorScheme={isDarkMode ? "DARK" : "LIGHT"}
@@ -399,6 +539,50 @@ export default function LiveMap({
           style={{ width: "100%", height: "100%" }}
           gestureHandling="greedy"
         >
+          <MapControl position={ControlPosition.TOP_LEFT}>
+            <MapSearchBar />
+          </MapControl>
+
+          {locationPickActive && (
+            <MapControl position={ControlPosition.TOP_CENTER}>
+              <div style={{ padding: '10px' }}>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '12px', 
+                  background: 'rgba(59, 130, 246, 0.95)', 
+                  padding: '8px 16px', 
+                  borderRadius: '8px', 
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                  color: 'white',
+                  fontWeight: 500,
+                  backdropFilter: 'blur(8px)',
+                  fontFamily: 'Inter, sans-serif'
+                }}>
+                  <span>Click the incident location on the map</span>
+                  <button 
+                    type="button" 
+                    onClick={onCancelLocationPick}
+                    style={{
+                      background: 'rgba(255,255,255,0.2)',
+                      border: 'none',
+                      color: 'white',
+                      padding: '6px 12px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseOver={e => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+                    onMouseOut={e => e.currentTarget.style.background = 'rgba(255,255,255,0.2)'}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </MapControl>
+          )}
+
           <MyLocationControl setMapCenter={setMapCenter} setMapZoom={setMapZoom} />
           
           <HeatmapLayer events={events} heatmapActive={heatmapActive} />
@@ -497,12 +681,6 @@ export default function LiveMap({
         </Map>
       </APIProvider>
 
-      {locationPickActive && (
-        <div className="location-pick-banner">
-          <span>Click the incident location on the map</span>
-          <button type="button" onClick={onCancelLocationPick}>Cancel</button>
-        </div>
-      )}
     </div>
   );
 }

@@ -61,7 +61,7 @@ function validateManualImageReport({ text, nlp, imageAnalysis }) {
     return "The uploaded image does not clearly show garbage burning, waste dumping, industrial smoke, construction dust, or smog. Please upload a relevant photo.";
   }
 
-  const meaningfulText = typeof text === "string" && text.trim().length >= 12;
+  const meaningfulText = typeof text === "string" && text.trim().length > 0;
   if (!meaningfulText) return null;
 
   if (imageAnalysis.textImageMatch === false) {

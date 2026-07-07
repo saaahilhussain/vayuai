@@ -44,9 +44,11 @@ export default function App() {
   const [predictionData, setPredictionData] = useState(null);
   const [isPickingReportLocation, setIsPickingReportLocation] = useState(false);
   const [reportLocationCoords, setReportLocationCoords] = useState(null);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
   // Fetch hotspots periodically
   useEffect(() => {
+    if (!currentUser) return;
     let cancelled = false;
     const load = () => {
       fetchHotspots()
@@ -65,6 +67,7 @@ export default function App() {
 
   // Fetch predictions periodically
   useEffect(() => {
+    if (!currentUser) return;
     let cancelled = false;
     const load = () => {
       fetchPredictions()
@@ -88,6 +91,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!currentUser) return;
     fetchEvents().then((data) => {
       setEvents(data);
       setDisplayEvents(data);
@@ -95,37 +99,47 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!currentUser) return;
     const es = createEventStream((event) => {
       setEvents((prev) => {
         // Find if this is an update to an existing event
-        const existingEvent = prev.find(e => e.id === event.id);
-        
+        const existingEvent = prev.find((e) => e.id === event.id);
+
         // Notify if it's an update for the citizen
-        if (existingEvent && userRole === 'citizen' && existingEvent.status !== event.status && event.citizenUid === currentUser?.uid) {
-          if (Notification.permission === 'granted') {
-            new Notification('Complaint Update', { body: `Your report status changed to: ${event.status.replace('_', ' ')}` });
+        if (
+          existingEvent &&
+          userRole === "citizen" &&
+          existingEvent.status !== event.status &&
+          event.citizenUid === currentUser?.uid
+        ) {
+          if (Notification.permission === "granted") {
+            new Notification("Complaint Update", {
+              body: `Your report status changed to: ${event.status.replace("_", " ")}`,
+            });
           }
         }
         // Notify if it's an update for the worker
-        if (userRole === 'worker' && event.assignedTo === currentUser?.uid) {
+        if (userRole === "worker" && event.assignedTo === currentUser?.uid) {
           if (!existingEvent || existingEvent.status !== event.status) {
-            if (Notification.permission === 'granted') {
-              new Notification('New Task Update', { body: `Task status: ${event.status.replace('_', ' ')}` });
+            if (Notification.permission === "granted") {
+              new Notification("New Task Update", {
+                body: `Task status: ${event.status.replace("_", " ")}`,
+              });
             }
           }
         }
 
         if (existingEvent) {
-          return prev.map(e => e.id === event.id ? event : e);
+          return prev.map((e) => (e.id === event.id ? event : e));
         }
         const updated = [...prev, event];
         return updated.slice(-500);
       });
 
       setDisplayEvents((prev) => {
-        const existingEvent = prev.find(e => e.id === event.id);
+        const existingEvent = prev.find((e) => e.id === event.id);
         if (existingEvent) {
-          return prev.map(e => e.id === event.id ? event : e);
+          return prev.map((e) => (e.id === event.id ? event : e));
         }
         const updated = [...prev, event];
         return updated.slice(-500);
@@ -155,12 +169,31 @@ export default function App() {
     setReportLocationCoords(null);
   };
 
+  const handleLogout = () => {
+    setIsLogoutConfirmOpen(true);
+  };
+
+  if (!currentUser) {
+    return (
+      <div
+        id="app"
+        style={{
+          backgroundColor: "#0f172a",
+          minHeight: "100vh",
+          width: "100vw",
+        }}
+      >
+        <AuthModal forceOpen={true} />
+      </div>
+    );
+  }
+
   return (
     <div id="app">
       {mapOpen && (
         <LiveMap
           events={displayEvents}
-          heatmapActive={heatmapActive}
+          heatmapActive={userRole === "citizen" ? false : heatmapActive}
           selectedEvent={selectedEvent}
           isDarkMode={isDarkMode}
           sensorsActive={sensorsActive}
@@ -173,8 +206,12 @@ export default function App() {
           onReportLocationPick={(coords) => {
             setReportLocationCoords(coords);
             setIsPickingReportLocation(false);
+            if (userRole === "citizen") setMapOpen(false);
           }}
-          onCancelLocationPick={() => setIsPickingReportLocation(false)}
+          onCancelLocationPick={() => {
+            setIsPickingReportLocation(false);
+            if (userRole === "citizen") setMapOpen(false);
+          }}
         />
       )}
 
@@ -258,7 +295,7 @@ export default function App() {
       )}
 
       {/* Citizen Panel */}
-      {mapOpen && citizenActive && (
+      {citizenActive && (
         <CitizenPanel onClose={() => setCitizenActive(false)} />
       )}
 
@@ -276,39 +313,94 @@ export default function App() {
       {/* Floating bottom control bar */}
       <div className="control-bar">
         <div className="control-bar-inner">
-          <button
-            className={`cb-btn ${isLive ? "cb-active" : ""}`}
-            onClick={handleToggleLive}
-          >
-            {isLive ? "Live" : "Paused"}
-          </button>
-          {mapOpen && userRole !== "citizen" && (
+          {userRole === "citizen" ? (
             <>
               <button
-                className={`cb-btn ${heatmapActive ? "cb-active" : ""}`}
-                onClick={() => setHeatmapActive(!heatmapActive)}
+                className={`cb-btn ${isAddModalOpen ? "cb-active" : ""}`}
+                onClick={() => {
+                  if (!currentUser) {
+                    setIsAuthModalOpen(true);
+                    return;
+                  }
+                  setIsAddModalOpen(true);
+                  setIsPickingReportLocation(false);
+                  setCitizenActive(false);
+                  // Do not open the map for citizens unless they explicitly click 'Pin on map'
+                }}
               >
-                Heatmap
+                Report
               </button>
               <button
-                className={`cb-btn ${sensorsActive ? "cb-active" : ""}`}
-                onClick={() => setSensorsActive(!sensorsActive)}
+                className={`cb-btn ${!mapOpen && !isAddModalOpen && !citizenActive ? "cb-active" : ""}`}
+                onClick={() => {
+                  setMapOpen(false);
+                  setIsAddModalOpen(false);
+                  setCitizenActive(false);
+                }}
               >
-                Sensors
+                Live Feed
+              </button>
+              <button
+                className={`cb-btn ${citizenActive ? "cb-active" : ""}`}
+                onClick={() => {
+                  if (!currentUser) {
+                    setIsAuthModalOpen(true);
+                    return;
+                  }
+                  setCitizenActive(true);
+                  setIsAddModalOpen(false);
+                }}
+                style={
+                  citizenActive
+                    ? {}
+                    : { color: "#f472b6", borderColor: "rgba(244,114,182,0.3)" }
+                }
+              >
+                My Complaints
+              </button>
+              <button
+                className="cb-btn"
+                onClick={() =>
+                  currentUser ? handleLogout() : setIsAuthModalOpen(true)
+                }
+                style={{ marginLeft: "auto" }}
+              >
+                {currentUser ? "Logout" : "Login"}
               </button>
             </>
-          )}
-
-          <button
-            className={`cb-btn ${mapOpen ? "cb-active" : ""}`}
-            onClick={() => setMapOpen(!mapOpen)}
-          >
-            {mapOpen ? "Go to Home" : "Show Map"}
-          </button>
-
-          {mapOpen && (
+          ) : (
             <>
-              {userRole !== "citizen" && (
+              <button
+                className={`cb-btn ${isLive ? "cb-active" : ""}`}
+                onClick={handleToggleLive}
+              >
+                {isLive ? "Live" : "Paused"}
+              </button>
+              {mapOpen && (
+                <>
+                  <button
+                    className={`cb-btn ${heatmapActive ? "cb-active" : ""}`}
+                    onClick={() => setHeatmapActive(!heatmapActive)}
+                  >
+                    Heatmap
+                  </button>
+                  <button
+                    className={`cb-btn ${sensorsActive ? "cb-active" : ""}`}
+                    onClick={() => setSensorsActive(!sensorsActive)}
+                  >
+                    Sensors
+                  </button>
+                </>
+              )}
+
+              <button
+                className={`cb-btn ${mapOpen ? "cb-active" : ""}`}
+                onClick={() => setMapOpen(!mapOpen)}
+              >
+                {mapOpen ? "Go to Home" : "Show Map"}
+              </button>
+
+              {mapOpen && (
                 <>
                   <button
                     className={`cb-btn ${hotspotsActive ? "cb-active" : ""}`}
@@ -322,71 +414,66 @@ export default function App() {
                   >
                     Forecast
                   </button>
+                  {userRole === "municipality" && (
+                    <button
+                      className={`cb-btn ${municipalActive ? "cb-active" : ""}`}
+                      onClick={() => setMunicipalActive(!municipalActive)}
+                      style={
+                        municipalActive
+                          ? {}
+                          : {
+                              color: "#38bdf8",
+                              borderColor: "rgba(56,189,248,0.3)",
+                            }
+                      }
+                    >
+                      Command Center
+                    </button>
+                  )}
+                  {userRole === "worker" && (
+                    <button
+                      className={`cb-btn ${workerActive ? "cb-active" : ""}`}
+                      onClick={() => setWorkerActive(!workerActive)}
+                      style={
+                        workerActive
+                          ? {}
+                          : {
+                              color: "#4ade80",
+                              borderColor: "rgba(34,197,94,0.3)",
+                            }
+                      }
+                    >
+                      My Tasks
+                    </button>
+                  )}
                 </>
               )}
-              {userRole === "municipality" && (
-                <button
-                  className={`cb-btn ${municipalActive ? "cb-active" : ""}`}
-                  onClick={() => setMunicipalActive(!municipalActive)}
-                  style={
-                    municipalActive
-                      ? {}
-                      : { color: "#38bdf8", borderColor: "rgba(56,189,248,0.3)" }
+
+              <button
+                className={`cb-btn ${isAddModalOpen ? "cb-active" : ""}`}
+                onClick={() => {
+                  if (!currentUser) {
+                    setIsAuthModalOpen(true);
+                    return;
                   }
-                >
-                  Command Center
-                </button>
-              )}
-              {userRole === "worker" && (
-                <button
-                  className={`cb-btn ${workerActive ? "cb-active" : ""}`}
-                  onClick={() => setWorkerActive(!workerActive)}
-                  style={
-                    workerActive
-                      ? {}
-                      : { color: "#4ade80", borderColor: "rgba(34,197,94,0.3)" }
-                  }
-                >
-                  My Tasks
-                </button>
-              )}
-              {userRole === "citizen" && (
-                <button
-                  className={`cb-btn ${citizenActive ? "cb-active" : ""}`}
-                  onClick={() => setCitizenActive(!citizenActive)}
-                  style={
-                    citizenActive
-                      ? {}
-                      : { color: "#f472b6", borderColor: "rgba(244,114,182,0.3)" }
-                  }
-                >
-                  My Complaints
-                </button>
-              )}
+                  setIsAddModalOpen(true);
+                  setIsPickingReportLocation(false);
+                  setMapOpen(true); // Switch to map when reporting
+                }}
+              >
+                Report
+              </button>
+              <button
+                className="cb-btn"
+                onClick={() =>
+                  currentUser ? handleLogout() : setIsAuthModalOpen(true)
+                }
+                style={{ marginLeft: "auto" }}
+              >
+                {currentUser ? "Logout" : "Login"}
+              </button>
             </>
           )}
-
-          <button
-            className={`cb-btn ${isAddModalOpen ? "cb-active" : ""}`}
-            onClick={() => {
-              if (!currentUser) {
-                setIsAuthModalOpen(true);
-                return;
-              }
-              setIsAddModalOpen(true);
-              setIsPickingReportLocation(false);
-              setMapOpen(true); // Switch to map when reporting
-            }}
-          >
-            Report
-          </button>
-          <button
-            className="cb-btn"
-            onClick={() => currentUser ? logout() : setIsAuthModalOpen(true)}
-            style={{ marginLeft: 'auto' }}
-          >
-            {currentUser ? 'Logout' : 'Login'}
-          </button>
         </div>
       </div>
 
@@ -406,13 +493,51 @@ export default function App() {
         <AuthModal onClose={() => setIsAuthModalOpen(false)} />
       )}
 
+      {/* Logout Confirmation Modal */}
+      {isLogoutConfirmOpen && (
+        <div
+          className="auth-overlay"
+          onClick={() => setIsLogoutConfirmOpen(false)}
+          style={{ zIndex: 9999 }}
+        >
+          <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="auth-header">
+              <h2>Confirm Logout</h2>
+              <p>Are you sure you want to log out?</p>
+            </div>
+            <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
+              <button
+                className="cb-btn cb-active"
+                style={{ flex: 1, justifyContent: "center" }}
+                onClick={() => {
+                  setIsLogoutConfirmOpen(false);
+                  logout();
+                }}
+              >
+                Yes
+              </button>
+              <button
+                className="cb-btn"
+                style={{ flex: 1, justifyContent: "center" }}
+                onClick={() => setIsLogoutConfirmOpen(false)}
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Tweet Modal Overlay */}
       {isAddModalOpen && (
         <AddTweetModal
           onClose={handleCloseReport}
           isPickingLocation={isPickingReportLocation}
           pickedLocation={reportLocationCoords}
-          onStartPinLocation={() => setIsPickingReportLocation(true)}
+          onStartPinLocation={() => {
+            setIsPickingReportLocation(true);
+            setMapOpen(true);
+          }}
           onCancelPinLocation={() => setIsPickingReportLocation(false)}
           onClearPickedLocation={() => setReportLocationCoords(null)}
         />

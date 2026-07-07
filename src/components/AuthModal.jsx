@@ -5,17 +5,21 @@ import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
 } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import "./AuthModal.css";
 
-export default function AuthModal({ onClose }) {
+export default function AuthModal({ onClose, forceOpen = false }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [selectedRole, setSelectedRole] = useState("citizen");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
 
   const createRoleInFirestore = async (user, defaultRole = "citizen") => {
     const userRef = doc(db, "users", user.uid);
@@ -35,6 +39,7 @@ export default function AuthModal({ onClose }) {
     setLoading(true);
 
     try {
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
@@ -54,6 +59,7 @@ export default function AuthModal({ onClose }) {
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       const userCred = await signInWithPopup(auth, provider);
       await createRoleInFirestore(userCred.user, selectedRole);
       onClose();
@@ -65,11 +71,13 @@ export default function AuthModal({ onClose }) {
   };
 
   return (
-    <div className="auth-overlay" onClick={onClose}>
+    <div className="auth-overlay" onClick={!forceOpen ? onClose : undefined}>
       <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="auth-close-btn" onClick={onClose} aria-label="Close">
-          ×
-        </button>
+        {!forceOpen && (
+          <button className="auth-close-btn" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        )}
 
         {/* Header */}
         <div className="auth-header">
@@ -110,6 +118,19 @@ export default function AuthModal({ onClose }) {
               autoComplete={isLogin ? "current-password" : "new-password"}
             />
           </div>
+          
+          <div className="auth-remember-group" style={{ display: 'flex', alignItems: 'center', marginBottom: '16px', fontSize: '14px', color: '#94a3b8' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input 
+                type="checkbox" 
+                checked={rememberMe} 
+                onChange={(e) => setRememberMe(e.target.checked)} 
+                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#3b82f6' }}
+              />
+              Remember this device
+            </label>
+          </div>
+
           {!isLogin && (
             <div className="auth-role-group">
               <label className="auth-role-label">I am signing up as</label>

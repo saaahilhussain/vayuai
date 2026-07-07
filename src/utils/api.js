@@ -207,6 +207,16 @@ export async function fetchCitizenEvents(user) {
   return res.json();
 }
 
+export async function deleteCitizenEvent(user, eventId) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/citizen/events/${eventId}`, {
+    method: 'DELETE',
+    headers,
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
 export async function submitEventFeedback(user, eventId, rating) {
   const headers = await authHeaders(user);
   const res = await fetch(`${API_BASE}/citizen/events/${eventId}/feedback`, {

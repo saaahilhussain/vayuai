@@ -14,6 +14,25 @@ const SEVERITY_LEVELS = {
   critical: 4,
 };
 
+const GEMINI_MODEL_CANDIDATES = [
+  process.env.GEMINI_MODEL,
+  ...(process.env.GEMINI_MODELS || "").split(","),
+  "gemini-3.1-flash-lite",
+  "gemini-flash-lite-latest",
+  "gemini-flash-latest",
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-flash-002",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b",
+]
+  .map((model) => String(model || "").trim().replace(/^models\//, ""))
+  .filter(Boolean)
+  .filter((model, index, models) => models.indexOf(model) === index);
+
 function parseDataUrl(dataUrl) {
   if (!dataUrl || typeof dataUrl !== "string") return null;
   const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
@@ -29,8 +48,12 @@ function extractJson(text) {
   const end = candidate.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) return null;
   try {
-    return JSON.parse(candidate.slice(start, end + 1));
-  } catch {
+    let cleanJson = candidate.slice(start, end + 1);
+    cleanJson = cleanJson.replace(/,\s*([}\]])/g, '$1');
+    return JSON.parse(cleanJson);
+  } catch (err) {
+    console.error("JSON parse failed. Raw text:", text);
+    console.error("Parse error:", err.message);
     return null;
   }
 }
@@ -49,6 +72,41 @@ function extractResponseText(payload) {
   if (directText) return directText;
 
   return JSON.stringify(payload);
+}
+
+async function generateGeminiContent(apiKey, payload) {
+  const failures = [];
+
+  for (const model of GEMINI_MODEL_CANDIDATES) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) {
+      return {
+        model,
+        payload: await response.json(),
+      };
+    }
+
+    const body = await response.text();
+    failures.push({ model, status: response.status, body });
+
+    if (![400, 404].includes(response.status)) {
+      break;
+    }
+  }
+
+  const summary = failures
+    .map(({ model, status }) => `${model} (${status})`)
+    .join(", ");
+  const lastFailure = failures[failures.length - 1];
+  throw new Error(
+    `Gemini request failed. Tried models: ${summary}. Last response: ${lastFailure?.body || "No response body"}`,
+  );
 }
 
 function normalizeAnalysis(raw, fallback = {}) {
@@ -112,8 +170,6 @@ async function analyzePollutionImage(dataUrl, context = {}) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return unavailable("GEMINI_API_KEY is not configured", context);
 
-  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const locationText = context.location
     ? `Location hint: ${context.location}.`
     : "";
@@ -158,41 +214,29 @@ JSON schema:
 `;
 
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: prompt },
-              {
-                inline_data: {
-                  mime_type: parsed.mimeType,
-                  data: parsed.data,
-                },
+    const result = await generateGeminiContent(apiKey, {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: parsed.mimeType,
+                data: parsed.data,
               },
-            ],
-          },
-        ],
-        generation_config: {
-          temperature: 0.1,
-          response_mime_type: "application/json",
+            },
+          ],
         },
-      }),
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: "application/json",
+        maxOutputTokens: 600,
+      },
     });
 
-    if (!response.ok) {
-      const body = await response.text();
-      return unavailable(
-        `Gemini request failed: ${response.status} ${body}`,
-        context,
-      );
-    }
-
-    const payload = await response.json();
-    const text = extractResponseText(payload);
+    const text = extractResponseText(result.payload);
     const raw = extractJson(text);
     if (!raw) {
       console.warn("Gemini returned unreadable payload:", text.slice(0, 500));
@@ -215,11 +259,8 @@ async function generateReportDescription(dataUrl, context = {}) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return { success: false, error: "GEMINI_API_KEY is not configured" };
 
-  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
   const locationHint = context.location ? `Location hint: ${context.location}.` : "";
-  const hasUserText = typeof context.text === "string" && context.text.trim().length >= 5;
+  const hasUserText = typeof context.text === "string" && context.text.trim().length > 0;
   const userTextBlock = hasUserText ? `Citizen's current description: "${context.text.trim()}"` : "";
 
   const prompt = `
@@ -264,38 +305,29 @@ If the image does not show any recognizable pollution, set isPollution to false 
 `;
 
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: prompt },
-              {
-                inline_data: {
-                  mime_type: parsed.mimeType,
-                  data: parsed.data,
-                },
+    const result = await generateGeminiContent(apiKey, {
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: parsed.mimeType,
+                data: parsed.data,
               },
-            ],
-          },
-        ],
-        generation_config: {
-          temperature: 0.4,
-          response_mime_type: "application/json",
+            },
+          ],
         },
-      }),
+      ],
+      generationConfig: {
+        temperature: 0.4,
+        responseMimeType: "application/json",
+        maxOutputTokens: 150,
+      },
     });
 
-    if (!response.ok) {
-      const body = await response.text();
-      return { success: false, error: `Gemini request failed: ${response.status} ${body}` };
-    }
-
-    const payload = await response.json();
-    const text = extractResponseText(payload);
+    const text = extractResponseText(result.payload);
     const raw = extractJson(text);
 
     if (!raw) {
@@ -329,8 +361,6 @@ async function analyzeVideoFrames(frames, context = {}) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return unavailable("GEMINI_API_KEY is not configured", context);
 
-  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const locationText = context.location ? `Location hint: ${context.location}.` : "";
   const reportText = context.text ? `Citizen text: ${context.text}` : "";
 
@@ -377,8 +407,8 @@ JSON schema:
   for (const frame of frames) {
     if (frame.mimeType && frame.data) {
       parts.push({
-        inline_data: {
-          mime_type: frame.mimeType,
+        inlineData: {
+          mimeType: frame.mimeType,
           data: frame.data
         }
       });
@@ -386,25 +416,16 @@ JSON schema:
   }
 
   try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts }],
-        generation_config: {
-          temperature: 0.1,
-          response_mime_type: "application/json",
-        },
-      }),
+    const result = await generateGeminiContent(apiKey, {
+      contents: [{ role: "user", parts }],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: "application/json",
+        maxOutputTokens: 600,
+      },
     });
 
-    if (!response.ok) {
-      const body = await response.text();
-      return unavailable(`Gemini request failed: ${response.status} ${body}`, context);
-    }
-
-    const payload = await response.json();
-    const text = extractResponseText(payload);
+    const text = extractResponseText(result.payload);
     const raw = extractJson(text);
     if (!raw) {
       console.warn("Gemini returned unreadable payload for video:", text.slice(0, 500));
@@ -427,9 +448,6 @@ export async function verifyResolutionImage(beforeText, beforeType, afterImageDa
   if (!image) {
     return { available: false, error: "Invalid image data URL format" };
   }
-
-  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const prompt = `
 You are an environmental inspector AI for VayuAI.
@@ -468,21 +486,12 @@ Schema:
       generationConfig: {
         temperature: 0.1,
         responseMimeType: "application/json",
+        maxOutputTokens: 250,
       },
     };
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      throw new Error(`Gemini API Error: ${res.status} ${res.statusText}`);
-    }
-
-    const data = await res.json();
-    const rawText = extractResponseText(data);
+    const data = await generateGeminiContent(apiKey, payload);
+    const rawText = extractResponseText(data.payload);
     const result = extractJson(rawText);
 
     if (!result) throw new Error("Failed to parse Gemini JSON response");

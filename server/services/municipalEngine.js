@@ -8,7 +8,9 @@ function extractJson(text) {
   const end = candidate.lastIndexOf("]");
   if (start === -1 || end === -1 || end <= start) return null;
   try {
-    return JSON.parse(candidate.slice(start, end + 1));
+    let cleanJson = candidate.slice(start, end + 1);
+    cleanJson = cleanJson.replace(/,\s*([}\]])/g, "$1");
+    return JSON.parse(cleanJson);
   } catch {
     return null;
   }
@@ -28,33 +30,91 @@ function extractResponseText(payload) {
   return directText || "";
 }
 
+const GEMINI_MODEL_CANDIDATES = [
+  process.env.GEMINI_MODEL,
+  ...(process.env.GEMINI_MODELS || "").split(","),
+  "gemini-3.1-flash-lite",
+  "gemini-flash-lite-latest",
+  "gemini-flash-latest",
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-flash-002",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-8b",
+]
+  .map((model) =>
+    String(model || "")
+      .trim()
+      .replace(/^models\//, ""),
+  )
+  .filter(Boolean)
+  .filter((model, index, models) => models.indexOf(model) === index);
+
+async function generateGeminiContent(apiKey, payload) {
+  const failures = [];
+
+  for (const model of GEMINI_MODEL_CANDIDATES) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) return await response.json();
+
+    const body = await response.text();
+    failures.push({ model, status: response.status, body });
+
+    if (![400, 404].includes(response.status)) break;
+  }
+
+  const summary = failures
+    .map(({ model, status }) => `${model} (${status})`)
+    .join(", ");
+  const lastFailure = failures[failures.length - 1];
+  throw new Error(
+    `Gemini request failed. Tried models: ${summary}. Last response: ${lastFailure?.body || "No response body"}`,
+  );
+}
+
 class MunicipalEngine {
   /**
    * Generate actionable municipal recommendations using Gemini.
    */
   static async generateBrief(hotspots, predictions, weather) {
     const apiKey = process.env.GEMINI_API_KEY;
-    
+
     // If no API key is provided, return a fallback response so the UI still works
     if (!apiKey) {
-      console.warn("MunicipalEngine: No GEMINI_API_KEY found, using fallback logic.");
+      console.warn(
+        "MunicipalEngine: No GEMINI_API_KEY found, using fallback logic.",
+      );
       return this._generateFallback(hotspots, predictions, weather);
     }
 
-    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
     // Prepare context for Gemini
-    const topHotspots = (hotspots || []).slice(0, 3).map(h => 
-      `Location: ${h.locationName}, Severity: ${h.severity}, Predominant Issue: ${h.predominantType}, Events: ${h.eventCount}`
-    ).join("\n");
+    const topHotspots = (hotspots || [])
+      .slice(0, 3)
+      .map(
+        (h) =>
+          `Location: ${h.locationName}, Severity: ${h.severity}, Predominant Issue: ${h.predominantType}, Events: ${h.eventCount}`,
+      )
+      .join("\n");
 
-    const topPredictions = (predictions?.locations || []).slice(0, 3).map(p => 
-      `Location: ${p.name}, Current AQI: ${p.currentAQI}, Predicted Peak AQI: ${p.peakAQI} at ${p.peakHour}:00`
-    ).join("\n");
+    const topPredictions = (predictions?.locations || [])
+      .slice(0, 3)
+      .map(
+        (p) =>
+          `Location: ${p.name}, Current AQI: ${p.currentAQI}, Predicted Peak AQI: ${p.peakAQI} at ${p.peakHour}:00`,
+      )
+      .join("\n");
 
-    const weatherContext = weather 
-      ? `Temperature: ${weather.temperature}°C, Wind Speed: ${weather.windSpeed}km/h` 
+    const weatherContext = weather
+      ? `Temperature: ${weather.temperature}°C, Wind Speed: ${weather.windSpeed}km/h`
       : "Unknown";
 
     const prompt = `
@@ -85,38 +145,34 @@ JSON Schema for each object:
 `;
 
     try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generation_config: {
-            temperature: 0.3, // Low temperature for factual/structural consistency
-            response_mime_type: "application/json",
-          },
-        }),
+      const payload = await generateGeminiContent(apiKey, {
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.3,
+          responseMimeType: "application/json",
+          maxOutputTokens: 700,
+        },
       });
 
-      if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.status}`);
-      }
-
-      const payload = await response.json();
       const text = extractResponseText(payload);
       const actions = extractJson(text);
 
       if (Array.isArray(actions) && actions.length > 0) {
         // Normalize resourceTypes to match frontend icons
-        return actions.map(a => ({
+        return actions.map((a) => ({
           ...a,
-          resourceType: ["water_cannon", "cleanup_crew", "inspection", "traffic_police"].includes(a.resourceType) 
-            ? a.resourceType 
-            : "inspection"
+          resourceType: [
+            "water_cannon",
+            "cleanup_crew",
+            "inspection",
+            "traffic_police",
+          ].includes(a.resourceType)
+            ? a.resourceType
+            : "inspection",
         }));
       }
 
       throw new Error("Failed to parse valid JSON array from Gemini response.");
-
     } catch (err) {
       console.error("MunicipalEngine error:", err);
       return this._generateFallback(hotspots, predictions, weather);
@@ -125,37 +181,44 @@ JSON Schema for each object:
 
   static _generateFallback(hotspots, predictions, weather) {
     const actions = [];
-    
+
     if (hotspots && hotspots.length > 0) {
       const hs = hotspots[0];
-      if (hs.predominantType.includes("dust") || hs.predominantType.includes("smog")) {
+      if (
+        hs.predominantType.includes("dust") ||
+        hs.predominantType.includes("smog")
+      ) {
         actions.push({
           title: "Deploy Water Mist Cannon",
           location: hs.locationName,
-          reason: `High concentration of ${hs.predominantType.replace('_', ' ')} detected locally.`,
+          reason: `High concentration of ${hs.predominantType.replace("_", " ")} detected locally.`,
           resourceType: "water_cannon",
-          priority: hs.severity === "critical" ? "Critical" : "High"
+          priority: hs.severity === "critical" ? "Critical" : "High",
         });
       } else {
         actions.push({
           title: "Dispatch Cleanup Crew",
           location: hs.locationName,
-          reason: `Multiple reports of ${hs.predominantType.replace('_', ' ')} in the area.`,
+          reason: `Multiple reports of ${hs.predominantType.replace("_", " ")} in the area.`,
           resourceType: "cleanup_crew",
-          priority: hs.severity === "critical" ? "Critical" : "High"
+          priority: hs.severity === "critical" ? "Critical" : "High",
         });
       }
     }
 
-    if (predictions && predictions.locations && predictions.locations.length > 0) {
+    if (
+      predictions &&
+      predictions.locations &&
+      predictions.locations.length > 0
+    ) {
       const worst = predictions.locations[0];
       if (worst.peakAQI > 300) {
         actions.push({
           title: "Traffic Diversion Warning",
           location: worst.name,
-          reason: `Predicted peak AQI of ${worst.peakAQI} expected around ${String(worst.peakHour).padStart(2, '0')}:00.`,
+          reason: `Predicted peak AQI of ${worst.peakAQI} expected around ${String(worst.peakHour).padStart(2, "0")}:00.`,
           resourceType: "traffic_police",
-          priority: "Medium"
+          priority: "Medium",
         });
       }
     }
@@ -166,7 +229,7 @@ JSON Schema for each object:
         location: "City Center",
         reason: "Routine inspection to ensure baseline air quality.",
         resourceType: "inspection",
-        priority: "Low"
+        priority: "Low",
       });
     }
 
