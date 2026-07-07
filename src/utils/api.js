@@ -62,6 +62,11 @@ export async function postCustomTweet(
   locationCoords = null,
   storageUrl = null,
   citizenUid = null,
+  reporterName = null,
+  detailedLocation = null,
+  wasteCategories = [],
+  reportDate = null,
+  publishConsent = false,
 ) {
   const res = await fetch(`${API_BASE}/tweet`, {
     method: 'POST',
@@ -76,8 +81,17 @@ export async function postCustomTweet(
       locationCoords,
       storageUrl,
       citizenUid,
+      reporterName,
+      detailedLocation,
+      wasteCategories,
+      reportDate,
+      publishConsent,
     }),
   });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Server Error (${res.status}): ${errorText.substring(0, 100)}`);
+  }
   return res.json();
 }
 

@@ -598,6 +598,7 @@ function AddTweetModalContent({
 
     try {
       let response;
+      let storageUrl = null;
       if (audioDataUrl) {
         response = await postVoiceTweet(
           audioDataUrl,
@@ -612,7 +613,7 @@ function AddTweetModalContent({
         street: location,
         city: city,
         pincode: pincode,
-        state: stateName
+        state: state
       };
 
       response = await postCustomTweet(
@@ -647,9 +648,10 @@ function AddTweetModalContent({
         setStatus("error");
         setMessage(response.reason);
       }
-    } catch {
+    } catch (error) {
+      console.error("Submit error:", error);
       setStatus("error");
-      setMessage("Failed to connect to the server.");
+      setMessage("Error: " + (error.message || "Failed to connect to the server."));
     }
   };
 

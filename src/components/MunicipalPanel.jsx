@@ -87,6 +87,7 @@ export default function MunicipalPanel({
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState(null);
   const [actionStates, setActionStates] = useState({});
+  const [briefFilter, setBriefFilter] = useState("");
 
   // New state for assignment confirmation
   const [pendingAssignment, setPendingAssignment] = useState(null);
@@ -97,6 +98,8 @@ export default function MunicipalPanel({
   const [events, setEvents] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [teamStatusFilter, setTeamStatusFilter] = useState("");
+  const [briefStatusFilter, setBriefStatusFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
@@ -124,10 +127,7 @@ export default function MunicipalPanel({
     try {
       const [dashData, eventsData, workersData] = await Promise.all([
         fetchMunicipalDashboard(currentUser),
-        fetchMunicipalEvents(
-          currentUser,
-          statusFilter ? { status: statusFilter } : {},
-        ),
+        fetchMunicipalEvents(currentUser, {}), // ALWAYS fetch all events so worker status calculates correctly
         fetchWorkers(currentUser),
       ]);
       setDashboard(dashData);
@@ -140,7 +140,7 @@ export default function MunicipalPanel({
         status:
           w.manualStatus === "idle"
             ? "idle"
-            : eventsData.events.some(
+            : w.manualStatus === "busy" || eventsData.events.some(
                   (e) =>
                     e.assignedTo === w.uid &&
                     !["resolved", "cleanup_done"].includes(e.status),
@@ -164,8 +164,12 @@ export default function MunicipalPanel({
       loadManagementData();
   }, [activeTab, loadBrief, loadManagementData]);
 
-  const handleAction = (idx, type) => {
-    setActionStates((prev) => ({ ...prev, [idx]: type }));
+  const handleAction = (idx, type, workerUid = null) => {
+    setActionStates((prev) => {
+      const existing = prev[idx];
+      const prevWorkerUid = typeof existing === "object" ? existing.workerUid : null;
+      return { ...prev, [idx]: { status: type, workerUid: workerUid || prevWorkerUid } };
+    });
   };
 
   const handleStatusChange = async (eventId, newStatus) => {
@@ -183,9 +187,15 @@ export default function MunicipalPanel({
   const handleAssign = async (eventId, workerUid) => {
     setActionLoading(eventId);
     try {
-      await assignEventWorker(currentUser, eventId, workerUid);
-      // Clear manual idle status since they are now being assigned work
-      await updateWorkerManualStatus(currentUser, workerUid, "clear");
+      if (String(eventId).startsWith("action_")) {
+        const actionIdx = parseInt(String(eventId).split("_")[1]);
+        handleAction(actionIdx, "in_progress", workerUid);
+        await updateWorkerManualStatus(currentUser, workerUid, "busy");
+      } else {
+        await assignEventWorker(currentUser, eventId, workerUid);
+        // Clear manual idle status since they are now being assigned work
+        await updateWorkerManualStatus(currentUser, workerUid, "clear");
+      }
       await loadManagementData();
     } catch (err) {
       alert(`Failed: ${err.message}`);
@@ -198,7 +208,31 @@ export default function MunicipalPanel({
   const handleMarkIdle = async (workerUid) => {
     setActionLoading(workerUid); // reuse for local spinner
     try {
+      const activeEvents = events.filter(e => e.assignedTo === workerUid && !["resolved", "cleanup_done"].includes(e.status));
+      for (const event of activeEvents) {
+        await updateEventStatus(currentUser, event.id, "resolved");
+      }
+      Object.entries(actionStates).forEach(([idx, stateObj]) => {
+        if (stateObj && typeof stateObj === "object" && stateObj.status === "in_progress" && stateObj.workerUid === workerUid) {
+          handleAction(parseInt(idx), "resolved");
+        }
+      });
       await updateWorkerManualStatus(currentUser, workerUid, "idle");
+      await loadManagementData();
+    } catch (err) {
+      alert(`Failed: ${err.message}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleForceResolve = async (eventId, workerUid) => {
+    setActionLoading(eventId);
+    try {
+      await updateEventStatus(currentUser, eventId, "resolved");
+      if (workerUid) {
+        await updateWorkerManualStatus(currentUser, workerUid, "idle");
+      }
       await loadManagementData();
     } catch (err) {
       alert(`Failed: ${err.message}`);
@@ -211,7 +245,7 @@ export default function MunicipalPanel({
     if (!window.confirm(message)) return;
     setActionLoading(eventId);
     try {
-      await deleteEventById(currentUser, eventId);
+      await updateEventStatus(currentUser, eventId, "spam");
       await loadManagementData();
     } catch (err) {
       alert(`Failed: ${err.message}`);
@@ -308,29 +342,36 @@ export default function MunicipalPanel({
     </div>
   );
 
-  const renderManageTab = () => (
+  const renderManageTab = () => {
+    const visibleEvents = events.filter(e => {
+      if (statusFilter) return e.status === statusFilter;
+      return e.status !== "spam";
+    });
+
+    return (
     <div className="mdl-tab-content">
       <div className="mdl-page-header">
-        <h2 className="mdl-page-title">Manage Events</h2>
+        <h2 className="mdl-page-title">Manage Reports</h2>
         <div className="mp-filters">
-          <select
-            className="mp-select mp-status-filter"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">All Statuses</option>
-            <option value="open">🔴 Open</option>
-            <option value="in_progress">🟡 In Progress</option>
-            <option value="cleanup_done">🤖 Pending AI Verification</option>
-            <option value="resolved">🟢 Resolved</option>
-          </select>
-          <button
-            className="mp-btn mp-btn-secondary mp-refresh-btn"
-            onClick={loadManagementData}
-          >
-            ↻ Refresh
-          </button>
-        </div>
+            <select
+              className="mp-select mp-status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">All Statuses</option>
+              <option value="open">🔴 Open</option>
+              <option value="in_progress">🟡 In Progress</option>
+              <option value="cleanup_done">🤖 Pending AI Verification</option>
+              <option value="resolved">🟢 Resolved</option>
+              <option value="spam">🚩 Reported (Spam)</option>
+            </select>
+            <button
+              className="mp-btn mp-btn-secondary mp-refresh-btn"
+              onClick={loadManagementData}
+            >
+              ↻ Refresh
+            </button>
+          </div>
       </div>
 
       {loading && (
@@ -340,12 +381,12 @@ export default function MunicipalPanel({
         </div>
       )}
       {error && <div className="mp-empty">Error: {error}</div>}
-      {!loading && !error && events.length === 0 && (
+      {!loading && !error && visibleEvents.length === 0 && (
         <div className="mp-empty">No events match the selected filter.</div>
       )}
-      {!loading && !error && events.length > 0 && (
+      {!loading && !error && visibleEvents.length > 0 && (
         <div className="mp-list">
-          {events.map((event) => {
+          {visibleEvents.map((event) => {
             const statusCfg = STATUS_CONFIG[event.status] || STATUS_CONFIG.open;
             const pollCfg =
               POLLUTION_TYPES[event.pollutionType] || POLLUTION_TYPES.other;
@@ -431,8 +472,8 @@ export default function MunicipalPanel({
 
                     {/* Event Actions */}
                     <div className="mp-actions" style={{ padding: "0", display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-                      
-                      {(!event.assignedTo || event.status === "open") && (
+
+                      {(!event.assignedTo || event.status === "open") && event.status !== "spam" && (
                         <button
                           className="mp-btn mp-btn-primary"
                           onClick={(e) => {
@@ -461,7 +502,27 @@ export default function MunicipalPanel({
                         </button>
                       )}
 
-
+                      {event.assignedTo && ["in_progress", "assigned"].includes(event.status) && (
+                        <button
+                          className="mp-btn mp-btn-resolve"
+                          disabled={isActing}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleForceResolve(event.id, event.assignedTo);
+                          }}
+                          style={{
+                            padding: "10px 16px",
+                            fontWeight: 600,
+                            fontSize: "14px",
+                            display: "flex",
+                            justifyContent: "center",
+                            alignItems: "center",
+                            gap: "8px",
+                          }}
+                        >
+                          ✅ Mark as Resolved
+                        </button>
+                      )}
 
                       {event.status === "cleanup_done" && (
                         <>
@@ -506,6 +567,20 @@ export default function MunicipalPanel({
                         </button>
                       )}
 
+                      {event.status === "spam" && (
+                        <button
+                          className="mp-btn mp-btn-secondary mp-btn-sm"
+                          disabled={isActing}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStatusChange(event.id, "open");
+                          }}
+                        >
+                          ↩ Restore
+                        </button>
+                      )}
+
+                      {event.status !== "spam" && (
                         <button
                           className="mp-btn mp-btn-danger"
                           disabled={isActing}
@@ -529,6 +604,7 @@ export default function MunicipalPanel({
                         >
                           🚩 Report (Spam)
                         </button>
+                      )}
                     </div>
 
                     {isActing && (
@@ -545,81 +621,167 @@ export default function MunicipalPanel({
       )}
     </div>
   );
+};
 
-  const renderAIBriefTab = () => (
-    <div className="mdl-tab-content">
-      <h2 className="mdl-page-title">AI Action Brief</h2>
-      {briefLoading && (
-        <div className="mp-loading">
-          <div className="mp-spinner"></div>
-          <span>Generating AI Action Brief...</span>
+  const renderAIBriefTab = () => {
+    const visibleActions = actions.filter((action, idx) => {
+      const stateObj = actionStates[idx];
+      const state = stateObj ? (typeof stateObj === "string" ? stateObj : stateObj.status) : "open";
+      if (briefStatusFilter && state !== briefStatusFilter) return false;
+      if (!briefStatusFilter && state === "dismissed") return false;
+      if (briefFilter && action.priority !== briefFilter) return false;
+      return true;
+    });
+
+    return (
+      <div className="mdl-tab-content">
+        <div className="mdl-page-header">
+          <h2 className="mdl-page-title">AI Action Brief</h2>
+          <div className="mp-filters">
+            <select
+              className="mp-select mp-status-filter"
+              value={briefStatusFilter}
+              onChange={(e) => setBriefStatusFilter(e.target.value)}
+            >
+              <option value="">All Statuses</option>
+              <option value="open">🟢 Open</option>
+              <option value="in_progress">🟡 In Progress</option>
+              <option value="resolved">🟢 Resolved</option>
+              <option value="dismissed">🔴 Dismissed</option>
+            </select>
+            <select
+              className="mp-select mp-status-filter"
+              value={briefFilter}
+              onChange={(e) => setBriefFilter(e.target.value)}
+            >
+              <option value="">All Priorities</option>
+              <option value="CRITICAL">🔴 Critical</option>
+              <option value="HIGH">🟡 High</option>
+              <option value="MODERATE">🔵 Moderate</option>
+              <option value="LOW">🟢 Low</option>
+            </select>
+            <button
+              className="mp-btn mp-btn-secondary mp-refresh-btn"
+              onClick={loadBrief}
+            >
+              ↻ Refresh
+            </button>
+          </div>
         </div>
-      )}
-      {!briefLoading && briefError && (
-        <div className="mp-empty">Failed to load brief: {briefError}</div>
-      )}
-      {!briefLoading && !briefError && actions.length === 0 && (
-        <div className="mp-empty">
-          No critical actions recommended at this time.
-        </div>
-      )}
-      {!briefLoading && !briefError && actions.length > 0 && (
-        <div className="mp-list">
-          {actions.map((action, idx) => {
-            const state = actionStates[idx];
-            if (state === "dismissed") return null;
-            return (
-              <div key={idx} className={`mp-card priority-${action.priority}`}>
-                <div className="mp-priority-strip"></div>
-                <div className="mp-card-header">
-                  <div className="mp-title-row">
-                    <div className="mp-icon" title={action.resourceType}>
-                      {RESOURCE_ICONS[action.resourceType] || "⚡"}
-                    </div>
-                    <div className="mp-title-text">
-                      <strong>{action.title}</strong>
-                      <span className="mp-location">{action.location}</span>
+        {briefLoading && (
+          <div className="mp-loading">
+            <div className="mp-spinner"></div>
+            <span>Generating AI Action Brief...</span>
+          </div>
+        )}
+        {!briefLoading && briefError && (
+          <div className="mp-empty">Failed to load brief: {briefError}</div>
+        )}
+        {!briefLoading && !briefError && visibleActions.length === 0 && (
+          <div className="mp-empty">
+            No actions match the current filter.
+          </div>
+        )}
+        {!briefLoading && !briefError && visibleActions.length > 0 && (
+          <div className="mp-list">
+            {actions.map((action, idx) => {
+              const stateObj = actionStates[idx];
+              const state = stateObj ? (typeof stateObj === "string" ? stateObj : stateObj.status) : "open";
+              const workerUid = stateObj && typeof stateObj === "object" ? stateObj.workerUid : null;
+              if (briefStatusFilter && state !== briefStatusFilter) return null;
+              if (!briefStatusFilter && state === "dismissed") return null;
+              if (briefFilter && action.priority !== briefFilter) return null;
+              return (
+                <div key={idx} className={`mp-card priority-${action.priority}`}>
+                  <div className="mp-priority-strip"></div>
+                  <div className="mp-card-header">
+                    <div className="mp-title-row">
+                      <div className="mp-icon" title={action.resourceType}>
+                        {RESOURCE_ICONS[action.resourceType] || "⚡"}
+                      </div>
+                      <div className="mp-title-text">
+                        <strong>{action.title}</strong>
+                        <span className="mp-location">{action.location}</span>
+                      </div>
                     </div>
                   </div>
-                  <span className="mp-priority-badge">{action.priority}</span>
-                </div>
-                <div className="mp-reason">{action.reason}</div>
-                <div className="mp-actions">
-                  {state === "dispatched" ? (
-                    <button className="mp-btn mp-btn-secondary" disabled>
-                      ✅ Team Dispatched
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        className="mp-btn mp-btn-primary"
-                        onClick={() => handleAction(idx, "dispatched")}
-                      >
-                        Dispatch Resource
+                  <div className="mp-reason">{action.reason}</div>
+                  <div className="mp-actions">
+                    {state === "in_progress" ? (
+                      <>
+                        <button className="mp-btn mp-btn-secondary" disabled>
+                          ✅ Team Dispatched
+                        </button>
+                        <button
+                          className="mp-btn mp-btn-resolve"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setActionLoading(`action_resolve_${idx}`);
+                            try {
+                              handleAction(idx, "resolved");
+                              if (workerUid) {
+                                await updateWorkerManualStatus(currentUser, workerUid, "idle");
+                                await loadManagementData();
+                              }
+                            } finally {
+                              setActionLoading(null);
+                            }
+                          }}
+                        >
+                          {actionLoading === `action_resolve_${idx}` ? "..." : "✅ Mark as Complete"}
+                        </button>
+                      </>
+                    ) : state === "resolved" ? (
+                      <button className="mp-btn mp-btn-secondary" disabled>
+                        🟢 Task Completed
                       </button>
+                    ) : state === "dismissed" ? (
                       <button
                         className="mp-btn mp-btn-secondary"
-                        onClick={() => handleAction(idx, "dismissed")}
+                        onClick={() => handleAction(idx, "open")}
                       >
-                        Dismiss
+                        ↩ Restore
                       </button>
-                    </>
-                  )}
+                    ) : (
+                      <>
+                        <button
+                          className="mp-btn mp-btn-primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveEventForDispatch({
+                              id: `action_${idx}`,
+                              locationName: action.location,
+                              isActionBrief: true
+                            });
+                            setActiveTab('teams');
+                          }}
+                        >
+                          ⚡ Take action (Assign Team)
+                        </button>
+                        <button
+                          className="mp-btn mp-btn-secondary"
+                          onClick={() => handleAction(idx, "dismissed")}
+                        >
+                          Dismiss
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderHotspotsTab = () => (
     <div className="mdl-tab-content fullscreen-panel-wrapper">
       <h2 className="mdl-page-title">Pollution Hotspots</h2>
       <HotspotPanel
         hotspots={hotspots}
-        onClose={() => {}}
+        onClose={() => { }}
         onSelectHotspot={(hs) => {
           onSelectEvent({
             lat: hs.lat,
@@ -642,7 +804,7 @@ export default function MunicipalPanel({
       <h2 className="mdl-page-title">AQI Forecast</h2>
       <PredictionPanel
         predictionData={predictionData}
-        onClose={() => {}}
+        onClose={() => { }}
         onSelectLocation={(loc) => {
           onSelectEvent({
             lat: loc.lat,
@@ -663,10 +825,35 @@ export default function MunicipalPanel({
     </div>
   );
 
-  const renderTeamsTab = () => (
+  const renderTeamsTab = () => {
+    const visibleWorkers = workers.filter(worker => {
+      if (teamStatusFilter && worker.status !== teamStatusFilter) return false;
+      return true;
+    });
+
+    return (
     <div className="mdl-tab-content">
-      <h2 className="mdl-page-title">Municipal Teams Directory</h2>
-      
+      <div className="mdl-page-header">
+        <h2 className="mdl-page-title">Municipal Teams Directory</h2>
+        <div className="mp-filters">
+          <select
+            className="mp-select mp-status-filter"
+            value={teamStatusFilter}
+            onChange={(e) => setTeamStatusFilter(e.target.value)}
+          >
+            <option value="">All Statuses</option>
+            <option value="idle">🟢 Idle</option>
+            <option value="busy">🔴 Busy</option>
+          </select>
+          <button
+            className="mp-btn mp-btn-secondary mp-refresh-btn"
+            onClick={loadManagementData}
+          >
+            ↻ Refresh
+          </button>
+        </div>
+      </div>
+
       {activeEventForDispatch && (
         <div style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid #3b82f6', borderRadius: '8px', padding: '16px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -675,7 +862,7 @@ export default function MunicipalPanel({
               📍 {activeEventForDispatch.locationName || 'Unknown Location'}
             </p>
           </div>
-          <button 
+          <button
             className="mp-btn mp-btn-secondary"
             onClick={() => {
               setActiveEventForDispatch(null);
@@ -688,10 +875,10 @@ export default function MunicipalPanel({
       )}
 
       <div className="mp-teams-grid">
-        {workers.length === 0 ? (
-          <div className="mp-empty">No teams available.</div>
+        {visibleWorkers.length === 0 ? (
+          <div className="mp-empty">No teams match the current filter.</div>
         ) : (
-          workers.map((worker) => (
+          visibleWorkers.map((worker) => (
             <div
               key={worker.uid}
               className={`mp-team-card ${worker.status === "idle" ? "team-idle" : "team-busy"}`}
@@ -850,6 +1037,7 @@ export default function MunicipalPanel({
       </div>
     </div>
   );
+};
 
   // If NOT full screen (should not happen for municipalities anymore, but keeping as fallback)
   if (!isFullScreen) {
