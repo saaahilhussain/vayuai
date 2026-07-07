@@ -24,7 +24,7 @@ export default function App() {
   const [events, setEvents] = useState([]);
   const [displayEvents, setDisplayEvents] = useState([]);
   const [isLive, setIsLive] = useState(true);
-  const [heatmapActive, setHeatmapActive] = useState(true);
+  const [heatmapActive, setHeatmapActive] = useState(false);
   const [speed] = useState(8000);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [criticalAlert, setCriticalAlert] = useState(null);
@@ -34,7 +34,7 @@ export default function App() {
   const [mapOpen, setMapOpen] = useState(false);
   const { currentUser, userRole, logout } = useAuth();
   const [feedOpen, setFeedOpen] = useState(false);
-  const [sensorsActive, setSensorsActive] = useState(true);
+  const [sensorsActive, setSensorsActive] = useState(false);
   const [hotspotsActive, setHotspotsActive] = useState(false);
   const [predictionsActive, setPredictionsActive] = useState(false);
   const [municipalActive, setMunicipalActive] = useState(false);
@@ -195,6 +195,82 @@ export default function App() {
         }}
       >
         <AuthModal forceOpen={true} />
+      </div>
+    );
+  }
+
+  if (userRole === "municipality") {
+    return (
+      <div id="app">
+        {/* Render Map in background for Map Tab */}
+        <LiveMap
+          events={displayEvents}
+          heatmapActive={heatmapActive}
+          selectedEvent={selectedEvent}
+          isDarkMode={isDarkMode}
+          sensorsActive={sensorsActive}
+          hotspotsActive={hotspotsActive}
+          hotspots={hotspots}
+          predictionsActive={predictionsActive}
+          predictionData={predictionData}
+        />
+
+        {isLogoutConfirmOpen && (
+          <div className="modal-backdrop">
+            <div className="auth-modal" style={{ width: "320px", textAlign: "center" }}>
+              <h3 style={{ marginTop: 0, marginBottom: "16px", color: "#f8fafc" }}>Confirm Sign Out</h3>
+              <p style={{ color: "#94a3b8", marginBottom: "24px" }}>Are you sure you want to sign out?</p>
+              <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+                <button 
+                  onClick={() => setIsLogoutConfirmOpen(false)}
+                  style={{ padding: "8px 16px", borderRadius: "6px", background: "transparent", border: "1px solid #475569", color: "#cbd5e1", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => {
+                    setIsLogoutConfirmOpen(false);
+                    logout();
+                  }}
+                  style={{ padding: "8px 16px", borderRadius: "6px", background: "#ef4444", border: "none", color: "#fff", cursor: "pointer" }}
+                >
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Full Screen Layout */}
+        <MunicipalPanel 
+          isFullScreen={true} 
+          onLogout={handleLogout}
+          isLive={isLive}
+          onToggleLive={() => setIsLive(!isLive)}
+          heatmapActive={heatmapActive}
+          setHeatmapActive={setHeatmapActive}
+          sensorsActive={sensorsActive}
+          setSensorsActive={setSensorsActive}
+          onReportClick={() => setIsAddModalOpen(true)}
+          hotspots={hotspots}
+          predictionData={predictionData}
+          onSelectEvent={setSelectedEvent}
+        />
+        
+        {isAddModalOpen && (
+          <AddTweetModal
+            onClose={() => {
+              setIsAddModalOpen(false);
+              setIsPickingReportLocation(false);
+              setReportLocationCoords(null);
+            }}
+            isPickingLocation={isPickingReportLocation}
+            pickedLocation={reportLocationCoords}
+            onStartPinLocation={() => setIsPickingReportLocation(true)}
+            onCancelPinLocation={() => setIsPickingReportLocation(false)}
+            onClearPickedLocation={() => setReportLocationCoords(null)}
+          />
+        )}
       </div>
     );
   }

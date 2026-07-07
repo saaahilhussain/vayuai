@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { auth, db } from "../config/firebase";
 import { onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 
 const AuthContext = createContext();
 
@@ -15,29 +15,40 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    let unsubDoc = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
-        try {
-          // Fetch the user's role from Firestore
-          const userDoc = await getDoc(doc(db, "users", user.uid));
+        
+        // Listen to the user's role from Firestore to handle signup race conditions
+        unsubDoc = onSnapshot(doc(db, "users", user.uid), (userDoc) => {
           if (userDoc.exists()) {
             setUserRole(userDoc.data().role || "citizen");
           } else {
-            setUserRole("citizen"); // Default fallback
+            setUserRole("citizen"); // Default fallback until doc is created
           }
-        } catch (err) {
+          setLoading(false);
+        }, (err) => {
           console.error("Error fetching user role:", err);
           setUserRole("citizen");
-        }
+          setLoading(false);
+        });
       } else {
+        if (unsubDoc) {
+          unsubDoc();
+          unsubDoc = null;
+        }
         setCurrentUser(null);
         setUserRole(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      if (unsubDoc) unsubDoc();
+      unsubscribeAuth();
+    };
   }, []);
 
   const logout = () => {

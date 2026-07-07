@@ -62,7 +62,7 @@ const HeatmapLayer = ({ events, heatmapActive }) => {
     if (!map || !window.google || !window.google.maps.visualization) return;
     
     const hm = new window.google.maps.visualization.HeatmapLayer({
-      map: heatmapActive ? map : null,
+      map: null,
       radius: 30,
       opacity: 0.8,
     });
@@ -71,7 +71,7 @@ const HeatmapLayer = ({ events, heatmapActive }) => {
     return () => {
       hm.setMap(null);
     };
-  }, [map, heatmapActive]);
+  }, [map]);
 
   useEffect(() => {
     if (!heatmap || !window.google) return;
@@ -539,7 +539,7 @@ export default function LiveMap({
           style={{ width: "100%", height: "100%" }}
           gestureHandling="greedy"
         >
-          <MapControl position={ControlPosition.TOP_LEFT}>
+          <MapControl position={ControlPosition.TOP_CENTER}>
             <MapSearchBar />
           </MapControl>
 

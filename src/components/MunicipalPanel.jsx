@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import "./MunicipalPanel.css";
+import HotspotPanel from "./HotspotPanel";
+import PredictionPanel from "./PredictionPanel";
 import { useAuth } from "../context/AuthContext";
 import {
   fetchMunicipalBrief,
@@ -30,11 +32,25 @@ const STATUS_CONFIG = {
   resolved: { label: "Resolved", color: "#22c55e", icon: "✅" },
 };
 
-export default function MunicipalPanel({ onClose }) {
+export default function MunicipalPanel({ 
+  onClose, 
+  isFullScreen = false, 
+  onLogout,
+  isLive,
+  onToggleLive,
+  heatmapActive,
+  setHeatmapActive,
+  sensorsActive,
+  setSensorsActive,
+  onReportClick,
+  hotspots,
+  predictionData,
+  onSelectEvent
+}) {
   const { currentUser, userRole } = useAuth();
   const isMunicipal = userRole === "municipality";
 
-  const [activeTab, setActiveTab] = useState(isMunicipal ? "manage" : "brief");
+  const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, manage, brief, map
 
   // AI Brief state
   const [actions, setActions] = useState([]);
@@ -49,7 +65,8 @@ export default function MunicipalPanel({ onClose }) {
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [actionLoading, setActionLoading] = useState(null); // eventId being acted on
+  const [actionLoading, setActionLoading] = useState(null);
+  const [expandedEventId, setExpandedEventId] = useState(null);
 
   // Load AI Brief
   const loadBrief = useCallback(() => {
@@ -78,7 +95,16 @@ export default function MunicipalPanel({ onClose }) {
       ]);
       setDashboard(dashData);
       setEvents(eventsData.events || []);
-      setWorkers(workersData.workers || []);
+      
+      // Inject mock "team strength" and "assigned work" info into workers 
+      // since our DB currently only has simple user records for workers.
+      const enrichedWorkers = (workersData.workers || []).map(w => ({
+        ...w,
+        teamStrength: Math.floor(Math.random() * 4) + 2, // 2-5 members
+        status: eventsData.events.some(e => e.assignedTo === w.uid && !['resolved', 'cleanup_done'].includes(e.status)) ? 'busy' : 'idle',
+        assignedCount: eventsData.events.filter(e => e.assignedTo === w.uid).length
+      }));
+      setWorkers(enrichedWorkers);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -88,7 +114,7 @@ export default function MunicipalPanel({ onClose }) {
 
   useEffect(() => {
     if (activeTab === "brief") loadBrief();
-    if (activeTab === "manage") loadManagementData();
+    if (activeTab === "manage" || activeTab === "dashboard") loadManagementData();
   }, [activeTab, loadBrief, loadManagementData]);
 
   const handleAction = (idx, type) => {
@@ -120,7 +146,7 @@ export default function MunicipalPanel({ onClose }) {
   };
 
   const handleDelete = async (eventId) => {
-    if (!confirm("Delete this event? This cannot be undone.")) return;
+    if (!window.confirm("Delete this event? This cannot be undone.")) return;
     setActionLoading(eventId);
     try {
       await deleteEventById(currentUser, eventId);
@@ -132,232 +158,134 @@ export default function MunicipalPanel({ onClose }) {
     }
   };
 
-  return (
-    <div className="municipal-panel municipal-panel-wide">
-      <div className="mp-header">
-        <div className="mp-header-content">
-          <div className="mp-header-title">
-            <h3>Command Center</h3>
-            {isMunicipal && <span className="mp-badge mp-badge-role">Municipality</span>}
-          </div>
-          <span className="mp-subtitle">
-            {isMunicipal
-              ? "Manage events, assign workers, update statuses"
-              : "AI-powered action recommendations"}
-          </span>
-        </div>
-        <button className="mp-close-btn" onClick={onClose}>×</button>
-      </div>
-
-      {/* Tabs */}
-      {isMunicipal && (
-        <div className="mp-tabs">
-          <button
-            className={`mp-tab ${activeTab === "manage" ? "mp-tab-active" : ""}`}
-            onClick={() => setActiveTab("manage")}
-          >
-            📋 Manage Events
-          </button>
-          <button
-            className={`mp-tab ${activeTab === "brief" ? "mp-tab-active" : ""}`}
-            onClick={() => setActiveTab("brief")}
-          >
-            🤖 AI Brief
-          </button>
-        </div>
-      )}
-
-      {/* AI Brief Tab */}
-      {activeTab === "brief" && (
-        <>
-          {briefLoading && (
-            <div className="mp-loading">
-              <div className="mp-spinner"></div>
-              <span>Generating AI Action Brief...</span>
+  const renderDashboardTab = () => (
+    <div className="mdl-tab-content">
+      <h2 className="mdl-page-title">Dashboard Overview</h2>
+      {loading && !dashboard && <div className="mp-loading"><div className="mp-spinner"></div></div>}
+      {dashboard && (
+        <div className="mp-dashboard full-dashboard">
+          <div className="mp-stat-row">
+            <div className="mp-stat">
+              <span className="mp-stat-value">{dashboard.last24h}</span>
+              <span className="mp-stat-label">Reports (Last 24h)</span>
             </div>
-          )}
-          {!briefLoading && briefError && (
-            <div className="mp-empty">Failed to load brief: {briefError}</div>
-          )}
-          {!briefLoading && !briefError && actions.length === 0 && (
-            <div className="mp-empty">No critical actions recommended at this time.</div>
-          )}
-          {!briefLoading && !briefError && actions.length > 0 && (
-            <div className="mp-list">
-              {actions.map((action, idx) => {
-                const state = actionStates[idx];
-                if (state === "dismissed") return null;
-                return (
-                  <div key={idx} className={`mp-card priority-${action.priority}`}>
-                    <div className="mp-priority-strip"></div>
-                    <div className="mp-card-header">
-                      <div className="mp-title-row">
-                        <div className="mp-icon" title={action.resourceType}>
-                          {RESOURCE_ICONS[action.resourceType] || "⚡"}
+            <div className="mp-stat mp-stat-critical">
+              <span className="mp-stat-value">{dashboard.criticalOpen}</span>
+              <span className="mp-stat-label">Critical Open</span>
+            </div>
+            <div className="mp-stat">
+              <span className="mp-stat-value">{dashboard.byStatus?.open || 0}</span>
+              <span className="mp-stat-label">Open</span>
+            </div>
+            <div className="mp-stat">
+              <span className="mp-stat-value">{dashboard.byStatus?.in_progress || 0}</span>
+              <span className="mp-stat-label">In Progress</span>
+            </div>
+            <div className="mp-stat mp-stat-resolved">
+              <span className="mp-stat-value">{dashboard.byStatus?.resolved || 0}</span>
+              <span className="mp-stat-label">Resolved</span>
+            </div>
+            <div className="mp-stat" style={{ gridColumn: 'span 2' }}>
+              <span className="mp-stat-value">{dashboard.avgResponseTime || 'N/A'}</span>
+              <span className="mp-stat-label">Avg Response Time</span>
+            </div>
+          </div>
+          {dashboard.wardPerformance && (
+            <div className="mp-stat-row" style={{ marginTop: '20px' }}>
+              <div className="mp-stat" style={{ gridColumn: 'span 5' }}>
+                <span className="mp-stat-label" style={{ marginBottom: '10px' }}>Ward Performance (Resolved / Total)</span>
+                <div className="ward-performance-list">
+                  {Object.entries(dashboard.wardPerformance).map(([ward, stats]) => {
+                    const percent = stats.total > 0 ? Math.round((stats.resolved / stats.total) * 100) : 0;
+                    return (
+                      <div key={ward} className="ward-performance-item">
+                        <div className="ward-performance-header">
+                          <span className="ward-name">{ward}</span>
+                          <span className="ward-numbers">{stats.resolved} / {stats.total} resolved ({percent}%)</span>
                         </div>
-                        <div className="mp-title-text">
-                          <strong>{action.title}</strong>
-                          <span className="mp-location">{action.location}</span>
+                        <div className="ward-progress-bar">
+                          <div className="ward-progress-fill" style={{ width: `${percent}%` }}></div>
                         </div>
                       </div>
-                      <span className="mp-priority-badge">{action.priority}</span>
-                    </div>
-                    <div className="mp-reason">{action.reason}</div>
-                    <div className="mp-actions">
-                      {state === "dispatched" ? (
-                        <button className="mp-btn mp-btn-secondary" disabled>
-                          ✅ Team Dispatched
-                        </button>
-                      ) : (
-                        <>
-                          <button
-                            className="mp-btn mp-btn-primary"
-                            onClick={() => handleAction(idx, "dispatched")}
-                          >
-                            Dispatch Resource
-                          </button>
-                          <button
-                            className="mp-btn mp-btn-secondary"
-                            onClick={() => handleAction(idx, "dismissed")}
-                          >
-                            Dismiss
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Management Tab */}
-      {activeTab === "manage" && (
-        <>
-          {/* Dashboard Summary */}
-          {dashboard && (
-            <div className="mp-dashboard">
-              <div className="mp-stat-row">
-                <div className="mp-stat">
-                  <span className="mp-stat-value">{dashboard.last24h}</span>
-                  <span className="mp-stat-label">Last 24h</span>
-                </div>
-                <div className="mp-stat mp-stat-critical">
-                  <span className="mp-stat-value">{dashboard.criticalOpen}</span>
-                  <span className="mp-stat-label">Critical Open</span>
-                </div>
-                <div className="mp-stat">
-                  <span className="mp-stat-value">{dashboard.byStatus?.open || 0}</span>
-                  <span className="mp-stat-label">Open</span>
-                </div>
-                <div className="mp-stat">
-                  <span className="mp-stat-value">{dashboard.byStatus?.in_progress || 0}</span>
-                  <span className="mp-stat-label">In Progress</span>
-                </div>
-                <div className="mp-stat mp-stat-resolved">
-                  <span className="mp-stat-value">{dashboard.byStatus?.resolved || 0}</span>
-                  <span className="mp-stat-label">Resolved</span>
-                </div>
-                <div className="mp-stat" style={{ gridColumn: 'span 2' }}>
-                  <span className="mp-stat-value">{dashboard.avgResponseTime || 'N/A'}</span>
-                  <span className="mp-stat-label">Avg Response Time</span>
+                    );
+                  })}
                 </div>
               </div>
-              {dashboard.wardPerformance && (
-                <div className="mp-stat-row" style={{ marginTop: '10px' }}>
-                  <div className="mp-stat" style={{ gridColumn: 'span 5' }}>
-                    <span className="mp-stat-label" style={{ marginBottom: '5px' }}>Ward Performance (Resolved / Total)</span>
-                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                      {Object.entries(dashboard.wardPerformance).map(([ward, stats]) => (
-                        <div key={ward} style={{ fontSize: '0.85rem' }}>
-                          <strong>{ward}:</strong> {stats.resolved}/{stats.total}
-                        </div>
-                      ))}
-                    </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderManageTab = () => (
+    <div className="mdl-tab-content">
+      <div className="mdl-page-header">
+        <h2 className="mdl-page-title">Manage Events</h2>
+        <div className="mp-filter-bar">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="mp-select"
+          >
+            <option value="">All Statuses</option>
+            <option value="pending_review">🕒 Pending Review</option>
+            <option value="open">🔴 Open</option>
+            <option value="in_progress">🟡 In Progress</option>
+            <option value="cleanup_done">🤖 Pending AI Verification</option>
+            <option value="resolved">🟢 Resolved</option>
+          </select>
+          <button className="mp-btn mp-btn-secondary mp-refresh-btn" onClick={loadManagementData}>
+            ↻ Refresh
+          </button>
+        </div>
+      </div>
+
+      {loading && (
+        <div className="mp-loading">
+          <div className="mp-spinner"></div>
+          <span>Loading events...</span>
+        </div>
+      )}
+      {error && <div className="mp-empty">Error: {error}</div>}
+      {!loading && !error && events.length === 0 && (
+        <div className="mp-empty">No events match the selected filter.</div>
+      )}
+      {!loading && !error && events.length > 0 && (
+        <div className="mp-list">
+          {events.map((event) => {
+            const statusCfg = STATUS_CONFIG[event.status] || STATUS_CONFIG.open;
+            const pollCfg = POLLUTION_TYPES[event.pollutionType] || POLLUTION_TYPES.other;
+            const isActing = actionLoading === event.id;
+            const isExpanded = expandedEventId === event.id;
+
+            return (
+              <div key={event.id} className={`mp-card mp-event-card severity-${event.severity} ${isExpanded ? 'expanded' : ''}`}>
+                <div className="mp-priority-strip"></div>
+
+                <div 
+                  className="mp-event-summary" 
+                  onClick={() => setExpandedEventId(isExpanded ? null : event.id)}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <div className="mp-event-type">
+                    <span>{pollCfg.icon}</span>
+                    <span className="mp-event-type-label">{pollCfg.label}</span>
+                  </div>
+                  <div className="mp-event-meta-summary">
+                    <span className="mp-status-badge" style={{ background: `${statusCfg.color}22`, color: statusCfg.color }}>
+                      {statusCfg.icon} {statusCfg.label}
+                    </span>
+                    <span className="time-ago">{timeAgo(event.timestamp)}</span>
+                    <span className="expand-icon">{isExpanded ? '▲' : '▼'}</span>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
 
-          {/* Filter Bar */}
-          <div className="mp-filter-bar">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="mp-select"
-            >
-              <option value="">All Statuses</option>
-              <option value="open">🔴 Open</option>
-              <option value="in_progress">🟡 In Progress</option>
-              <option value="resolved">🟢 Resolved</option>
-            </select>
-            <button className="mp-btn mp-btn-secondary mp-refresh-btn" onClick={loadManagementData}>
-              ↻ Refresh
-            </button>
-          </div>
-
-          {/* Events List */}
-          {loading && (
-            <div className="mp-loading">
-              <div className="mp-spinner"></div>
-              <span>Loading events...</span>
-            </div>
-          )}
-          {error && <div className="mp-empty">Error: {error}</div>}
-          {!loading && !error && events.length === 0 && (
-            <div className="mp-empty">No events match the selected filter.</div>
-          )}
-          {!loading && !error && events.length > 0 && (
-            <div className="mp-list">
-              {events.map((event) => {
-                const statusCfg = STATUS_CONFIG[event.status] || STATUS_CONFIG.open;
-                const pollCfg = POLLUTION_TYPES[event.pollutionType] || POLLUTION_TYPES.other;
-                const isActing = actionLoading === event.id;
-
-                return (
-                  <div key={event.id} className={`mp-card mp-event-card severity-${event.severity}`}>
-                    <div className="mp-priority-strip"></div>
-
-                    {/* Event Header */}
-                    <div className="mp-event-header">
-                      <div className="mp-event-type">
-                        <span>{pollCfg.icon}</span>
-                        <span className="mp-event-type-label">{pollCfg.label}</span>
-                      </div>
-                      <div className="mp-event-badges">
-                        <span
-                          className="mp-status-badge"
-                          style={{ background: `${statusCfg.color}22`, color: statusCfg.color }}
-                        >
-                          {statusCfg.icon} {statusCfg.label}
-                        </span>
-                        <select
-                          className="mp-severity-badge"
-                          value={event.severityLevel || 1}
-                          onChange={(e) => {
-                            // Quick Priority Override (simulated API call)
-                            console.log(`Override priority to ${e.target.value}`);
-                          }}
-                          style={{ border: 'none', background: 'transparent', color: 'inherit', fontWeight: 'bold' }}
-                          title="Override Priority"
-                        >
-                          <option value="1">low</option>
-                          <option value="2">moderate</option>
-                          <option value="3">high</option>
-                          <option value="4">critical</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Event Details */}
-                    <div className="mp-event-details">
+                {isExpanded && (
+                  <div className="mp-event-expanded-details">
+                    <div className="mp-event-meta-row">
                       <div className="mp-event-location">📍 {event.locationName || "Unknown"}</div>
                       <div className="mp-event-meta">
-                        <span>{timeAgo(event.timestamp)}</span>
-                        <span>•</span>
                         <span>{event.corroborationCount}x corroborated</span>
                         {event.assignedTo && (
                           <>
@@ -366,29 +294,59 @@ export default function MunicipalPanel({ onClose }) {
                           </>
                         )}
                       </div>
-                      {event.text && (
-                        <div className="mp-event-text">
-                          {event.text.substring(0, 120)}
-                          {event.text.length > 120 ? "..." : ""}
-                        </div>
-                      )}
                     </div>
 
-                    {/* Actions */}
-                    <div className="mp-event-actions">
+                    {event.imageUrl && (
+                       <img src={event.imageUrl} alt="Report" className="mp-event-image" />
+                    )}
+
+                    {event.text && (
+                      <div className="mp-event-text full-text">
+                        {event.text}
+                      </div>
+                    )}
+
+                    {/* Assignment UI */}
+                  {(!event.assignedTo || event.status === "open" || event.status === "pending_review") && (
+                    <div className="mp-assignment-section">
+                      <select 
+                        className="mp-select mp-assign-select"
+                        onChange={(e) => {
+                          if(e.target.value) handleAssign(event.id, e.target.value);
+                        }}
+                        disabled={isActing}
+                        defaultValue=""
+                      >
+                        <option value="" disabled>Dispatch Idle Team...</option>
+                        {workers.filter(w => w.status === 'idle').map(w => (
+                          <option key={w.uid} value={w.uid}>
+                            {w.name} (Strength: {w.teamStrength})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {event.assignedTo && event.status !== "open" && event.status !== "pending_review" && (
+                    <div className="mp-assigned-badge">
+                      Assigned to: {workers.find(w => w.uid === event.assignedTo)?.name || 'Worker'}
+                    </div>
+                  )}
+
+                  <div className="mp-actions" style={{ padding: "0" }}>
                       {event.status === "pending_review" && (
                         <>
                           <button
                             className="mp-btn mp-btn-primary mp-btn-sm"
                             disabled={isActing}
-                            onClick={() => handleStatusChange(event.id, "open")}
+                            onClick={(e) => { e.stopPropagation(); handleStatusChange(event.id, "open"); }}
                           >
                             Approve
                           </button>
                           <button
                             className="mp-btn mp-btn-danger mp-btn-sm"
                             disabled={isActing}
-                            onClick={() => handleDelete(event.id)}
+                            onClick={(e) => { e.stopPropagation(); handleDelete(event.id); }}
                           >
                             Reject (Spam)
                           </button>
@@ -401,20 +359,19 @@ export default function MunicipalPanel({ onClose }) {
                             className="mp-select mp-select-sm"
                             defaultValue=""
                             disabled={isActing || workers.length === 0}
+                            onClick={(e) => e.stopPropagation()}
                             onChange={(e) => {
                               if (e.target.value) handleAssign(event.id, e.target.value);
                             }}
                           >
                             <option value="" disabled>
-                              {workers.length === 0 ? "No teams" : "Assign to Team..."}
+                              {workers.length === 0 ? "No workers found" : "Assign to Worker..."}
                             </option>
-                            <optgroup label="Sanitation">
-                              <option value="sanitation_team_1">Sanitation Team 1</option>
-                              <option value="sanitation_team_2">Sanitation Team 2</option>
-                            </optgroup>
-                            <optgroup label="Enforcement">
-                              <option value="police_squad_alpha">Police Squad Alpha</option>
-                            </optgroup>
+                            {workers.map(worker => (
+                              <option key={worker.uid} value={worker.uid}>
+                                {worker.name} ({worker.email})
+                              </option>
+                            ))}
                           </select>
                         </>
                       )}
@@ -424,7 +381,7 @@ export default function MunicipalPanel({ onClose }) {
                           <button
                             className="mp-btn mp-btn-resolve mp-btn-sm"
                             disabled={isActing}
-                            onClick={() => handleStatusChange(event.id, "resolved")}
+                            onClick={(e) => { e.stopPropagation(); handleStatusChange(event.id, "resolved"); }}
                             title={event.aiResolutionScore ? `AI Score: ${event.aiResolutionScore}` : "No AI Score"}
                           >
                             ✅ Finalize (AI Confirmed)
@@ -432,7 +389,7 @@ export default function MunicipalPanel({ onClose }) {
                           <button
                             className="mp-btn mp-btn-secondary mp-btn-sm"
                             disabled={isActing}
-                            onClick={() => handleStatusChange(event.id, "assigned")}
+                            onClick={(e) => { e.stopPropagation(); handleStatusChange(event.id, "assigned"); }}
                           >
                             ↩ Reject & Reassign
                           </button>
@@ -443,19 +400,22 @@ export default function MunicipalPanel({ onClose }) {
                         <button
                           className="mp-btn mp-btn-secondary mp-btn-sm"
                           disabled={isActing}
-                          onClick={() => handleStatusChange(event.id, "open")}
+                          onClick={(e) => { e.stopPropagation(); handleStatusChange(event.id, "open"); }}
                         >
                           ↩ Reopen
                         </button>
                       )}
-                      <button
-                        className="mp-btn mp-btn-danger mp-btn-sm"
-                        disabled={isActing}
-                        onClick={() => handleDelete(event.id)}
-                        title="Delete event (spam)"
-                      >
-                        🗑️
-                      </button>
+                      
+                      {event.status !== "pending_review" && (
+                        <button
+                          className="mp-btn mp-btn-danger mp-btn-sm"
+                          disabled={isActing}
+                          onClick={(e) => { e.stopPropagation(); handleDelete(event.id); }}
+                          title="Delete event (spam)"
+                        >
+                          🗑️ Delete
+                        </button>
+                      )}
                     </div>
 
                     {isActing && (
@@ -464,12 +424,304 @@ export default function MunicipalPanel({ onClose }) {
                       </div>
                     )}
                   </div>
-                );
-              })}
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderAIBriefTab = () => (
+    <div className="mdl-tab-content">
+      <h2 className="mdl-page-title">AI Action Brief</h2>
+      {briefLoading && (
+        <div className="mp-loading">
+          <div className="mp-spinner"></div>
+          <span>Generating AI Action Brief...</span>
+        </div>
+      )}
+      {!briefLoading && briefError && (
+        <div className="mp-empty">Failed to load brief: {briefError}</div>
+      )}
+      {!briefLoading && !briefError && actions.length === 0 && (
+        <div className="mp-empty">No critical actions recommended at this time.</div>
+      )}
+      {!briefLoading && !briefError && actions.length > 0 && (
+        <div className="mp-list">
+          {actions.map((action, idx) => {
+            const state = actionStates[idx];
+            if (state === "dismissed") return null;
+            return (
+              <div key={idx} className={`mp-card priority-${action.priority}`}>
+                <div className="mp-priority-strip"></div>
+                <div className="mp-card-header">
+                  <div className="mp-title-row">
+                    <div className="mp-icon" title={action.resourceType}>
+                      {RESOURCE_ICONS[action.resourceType] || "⚡"}
+                    </div>
+                    <div className="mp-title-text">
+                      <strong>{action.title}</strong>
+                      <span className="mp-location">{action.location}</span>
+                    </div>
+                  </div>
+                  <span className="mp-priority-badge">{action.priority}</span>
+                </div>
+                <div className="mp-reason">{action.reason}</div>
+                <div className="mp-actions">
+                  {state === "dispatched" ? (
+                    <button className="mp-btn mp-btn-secondary" disabled>
+                      ✅ Team Dispatched
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        className="mp-btn mp-btn-primary"
+                        onClick={() => handleAction(idx, "dispatched")}
+                      >
+                        Dispatch Resource
+                      </button>
+                      <button
+                        className="mp-btn mp-btn-secondary"
+                        onClick={() => handleAction(idx, "dismissed")}
+                      >
+                        Dismiss
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderHotspotsTab = () => (
+    <div className="mdl-tab-content fullscreen-panel-wrapper">
+      <h2 className="mdl-page-title">Pollution Hotspots</h2>
+      <HotspotPanel
+        hotspots={hotspots}
+        onClose={() => {}}
+        onSelectHotspot={(hs) => {
+          onSelectEvent({
+            lat: hs.lat,
+            lng: hs.lng,
+            locationName: hs.locationName,
+            severity: hs.severity,
+            pollutionType: hs.dominantType,
+            text: `Hotspot Center: ${hs.eventCount} nearby reports.`,
+            timestamp: new Date().toISOString(),
+            _t: Date.now(),
+          });
+          setActiveTab('map');
+        }}
+      />
+    </div>
+  );
+
+  const renderForecastTab = () => (
+    <div className="mdl-tab-content fullscreen-panel-wrapper">
+      <h2 className="mdl-page-title">AQI Forecast</h2>
+      <PredictionPanel
+        predictionData={predictionData}
+        onClose={() => {}}
+        onSelectLocation={(loc) => {
+          onSelectEvent({
+            lat: loc.lat,
+            lng: loc.lng,
+            locationName: loc.name,
+            severity: loc.hourlyForecast.find((h) => h.predictedAQI === loc.peakAQI)?.category.toLowerCase().replace(" ", "-") || "high",
+            pollutionType: "smog",
+            text: `Predicted Peak AQI: ${loc.peakAQI} at ${loc.peakHour}:00. Current AQI: ${loc.currentAQI}.`,
+            timestamp: new Date().toISOString(),
+          });
+          setActiveTab('map');
+        }}
+      />
+    </div>
+  );
+
+  const renderTeamsTab = () => (
+    <div className="mdl-tab-content">
+      <h2 className="mdl-page-title">Teams Directory</h2>
+      <div className="mp-teams-grid">
+        {workers.length === 0 ? (
+          <div className="mp-empty">No teams available.</div>
+        ) : (
+          workers.map(worker => (
+            <div key={worker.uid} className={`mp-team-card ${worker.status === 'idle' ? 'team-idle' : 'team-busy'}`}>
+              <div className="mp-team-header">
+                <div className="mp-team-avatar">
+                  {worker.name.charAt(0).toUpperCase()}
+                </div>
+                <div className="mp-team-info">
+                  <h3>{worker.name}</h3>
+                  <span className="mp-team-email">{worker.email}</span>
+                </div>
+                <span className={`mp-team-status-badge ${worker.status}`}>
+                  {worker.status.toUpperCase()}
+                </span>
+              </div>
+              <div className="mp-team-stats">
+                <div className="mp-team-stat">
+                  <span className="mp-team-stat-val">{worker.teamStrength}</span>
+                  <span className="mp-team-stat-label">Members</span>
+                </div>
+                <div className="mp-team-stat">
+                  <span className="mp-team-stat-val">{worker.assignedCount}</span>
+                  <span className="mp-team-stat-label">Assigned Work</span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  // If NOT full screen (should not happen for municipalities anymore, but keeping as fallback)
+  if (!isFullScreen) {
+    return (
+      <div className="municipal-panel municipal-panel-wide">
+        <div className="mp-header">
+          <div className="mp-header-content">
+            <div className="mp-header-title">
+              <h3>Command Center</h3>
+              {isMunicipal && <span className="mp-badge mp-badge-role">Municipality</span>}
+            </div>
+          </div>
+          <button className="mp-close-btn" onClick={onClose}>×</button>
+        </div>
+        <div className="mp-empty">Please log in as municipality to view full dashboard.</div>
+      </div>
+    );
+  }
+
+  // Full Screen Dashboard Layout
+  return (
+    <div className={`municipal-dashboard-layout ${activeTab === 'map' ? 'transparent-layout' : ''}`}>
+      {/* Sidebar Navigation */}
+      <div className="mdl-sidebar">
+        <div className="mdl-brand">
+          <span className="mdl-logo">🌬️</span>
+          <h2>VayuAI Command</h2>
+        </div>
+        
+        <nav className="mdl-nav">
+          <button 
+            className={`mdl-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <span className="mdl-nav-icon">📊</span>
+            Dashboard
+          </button>
+          <button 
+            className={`mdl-nav-item ${activeTab === 'manage' ? 'active' : ''}`}
+            onClick={() => setActiveTab('manage')}
+          >
+            <span className="mdl-nav-icon">📋</span>
+            Manage Events
+          </button>
+          <button 
+            className={`mdl-nav-item ${activeTab === 'teams' ? 'active' : ''}`}
+            onClick={() => setActiveTab('teams')}
+          >
+            <span className="mdl-nav-icon">👥</span>
+            Teams
+          </button>
+          <button 
+            className={`mdl-nav-item ${activeTab === 'brief' ? 'active' : ''}`}
+            onClick={() => setActiveTab('brief')}
+          >
+            <span className="mdl-nav-icon">🤖</span>
+            AI Action Brief
+          </button>
+          
+          <div style={{ margin: "16px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}></div>
+          
+          <button 
+            className={`mdl-nav-item ${activeTab === 'hotspots' ? 'active' : ''}`}
+            onClick={() => setActiveTab('hotspots')}
+          >
+            <span className="mdl-nav-icon">🎯</span>
+            Pollution Hotspots
+          </button>
+          <button 
+            className={`mdl-nav-item ${activeTab === 'forecast' ? 'active' : ''}`}
+            onClick={() => setActiveTab('forecast')}
+          >
+            <span className="mdl-nav-icon">🔮</span>
+            AQI Forecast
+          </button>
+          
+          <div style={{ margin: "16px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}></div>
+
+          <button 
+            className={`mdl-nav-item ${activeTab === 'map' ? 'active' : ''}`}
+            onClick={() => setActiveTab('map')}
+          >
+            <span className="mdl-nav-icon">🗺️</span>
+            Live Map
+          </button>
+
+          {/* Map Controls */}
+          {activeTab === 'map' && (
+            <div className="mdl-map-controls">
+              <span className="mdl-controls-header">Map Tools</span>
+              <button 
+                className={`mdl-control-btn ${isLive ? 'active' : ''}`}
+                onClick={onToggleLive}
+              >
+                {isLive ? '⏸ Pause Feed' : '▶ Resume Feed'}
+              </button>
+              <button 
+                className={`mdl-control-btn ${heatmapActive ? 'active' : ''}`}
+                onClick={() => setHeatmapActive(!heatmapActive)}
+              >
+                🔥 Heatmap
+              </button>
+              <button 
+                className={`mdl-control-btn ${sensorsActive ? 'active' : ''}`}
+                onClick={() => setSensorsActive(!sensorsActive)}
+              >
+                📡 IoT Sensors
+              </button>
+              <button 
+                className="mdl-control-btn"
+                onClick={onReportClick}
+                style={{ marginTop: '8px', border: '1px solid #3b82f6', color: '#60a5fa' }}
+              >
+                📸 Report Incident
+              </button>
             </div>
           )}
-        </>
-      )}
+        </nav>
+
+        <div className="mdl-sidebar-footer">
+          <div className="mdl-user-info">
+            <span className="mdl-user-email">{currentUser?.email}</span>
+            <span className="mp-badge mp-badge-role">Municipality</span>
+          </div>
+          <button className="mdl-logout-btn" onClick={onLogout}>
+            Sign Out
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div 
+        className="mdl-main" 
+      >
+        {activeTab === 'dashboard' && renderDashboardTab()}
+        {activeTab === 'manage' && renderManageTab()}
+        {activeTab === 'teams' && renderTeamsTab()}
+        {activeTab === 'brief' && renderAIBriefTab()}
+        {activeTab === 'hotspots' && renderHotspotsTab()}
+        {activeTab === 'forecast' && renderForecastTab()}
+      </div>
     </div>
   );
 }
