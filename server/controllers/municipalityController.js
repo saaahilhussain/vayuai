@@ -60,7 +60,7 @@ export async function updateEventStatus(req, res) {
   const { id } = req.params;
   const { status } = req.body;
 
-  const validStatuses = ["open", "in_progress", "resolved"];
+  const validStatuses = ["open", "in_progress", "resolved", "spam"];
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
   }
@@ -148,9 +148,9 @@ export async function updateWorkerStatus(req, res) {
     // We only support marking as 'idle' for now, or clearing it.
     // If status is 'clear', we delete the field.
     if (status === 'clear') {
-      await adminDb.collection(USERS_COLLECTION).doc(uid).update({ manualStatus: null });
+      await adminDb.collection(USERS_COLLECTION).doc(uid).set({ manualStatus: null }, { merge: true });
     } else {
-      await adminDb.collection(USERS_COLLECTION).doc(uid).update({ manualStatus: status });
+      await adminDb.collection(USERS_COLLECTION).doc(uid).set({ manualStatus: status }, { merge: true });
     }
     res.json({ success: true, status });
   } catch (err) {
