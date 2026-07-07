@@ -1,9 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { POLLUTION_TYPES, timeAgo } from '../utils/api';
 import './LiveFeed.css';
 
-export default function LiveFeed({ events, onSelectEvent, onClose, isSidebar = false }) {
+export default function LiveFeed({ events, onSelectEvent, onClose, isSidebar = false, onRefresh }) {
   const listRef = useRef(null);
+  const [startY, setStartY] = useState(0);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
   const sorted = [...events].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   useEffect(() => {
@@ -21,7 +25,48 @@ export default function LiveFeed({ events, onSelectEvent, onClose, isSidebar = f
         {isSidebar && <button className="feed-header-close" onClick={onClose}>✕</button>}
       </div>
 
-      <div className="feed-list" ref={listRef}>
+      <div 
+        className="feed-list" 
+        ref={listRef}
+        onTouchStart={(e) => {
+          if (listRef.current && listRef.current.scrollTop === 0) {
+            setStartY(e.touches[0].clientY);
+          }
+        }}
+        onTouchMove={(e) => {
+          if (startY === 0 || isRefreshing) return;
+          const currentY = e.touches[0].clientY;
+          const distance = currentY - startY;
+          if (distance > 0 && listRef.current && listRef.current.scrollTop === 0) {
+            // Prevent default scroll behavior if possible
+            if (e.cancelable) e.preventDefault();
+            setPullDistance(Math.min(distance * 0.4, 80));
+          }
+        }}
+        onTouchEnd={async () => {
+          if (pullDistance > 60 && onRefresh) {
+            setIsRefreshing(true);
+            setPullDistance(60);
+            await onRefresh();
+            setIsRefreshing(false);
+          }
+          setPullDistance(0);
+          setStartY(0);
+        }}
+      >
+        <div className="pull-indicator" style={{ 
+          height: pullDistance > 0 ? `${pullDistance}px` : '0', 
+          overflow: 'hidden', 
+          transition: isRefreshing || pullDistance === 0 ? 'height 0.3s' : 'none', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          color: '#94a3b8',
+          fontSize: '0.9em'
+        }}>
+          {isRefreshing ? "Refreshing..." : pullDistance > 60 ? "Release to refresh" : "Pull down to refresh"}
+        </div>
+        
         {sorted.slice(0, 80).map((event) => (
           <div
             key={event.id}

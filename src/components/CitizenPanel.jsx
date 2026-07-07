@@ -105,7 +105,7 @@ export default function CitizenPanel({ onClose }) {
 
       <div className="wp-filter-tabs">
         <button className="wp-refresh-btn" onClick={loadEvents} title="Refresh">
-          ↻ Refresh List
+          ↻
         </button>
       </div>
 

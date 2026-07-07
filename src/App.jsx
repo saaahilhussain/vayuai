@@ -145,7 +145,7 @@ export default function App() {
         return updated.slice(-500);
       });
 
-      if (event.severity === "critical") {
+      if (event.severity === "critical" && userRole !== "citizen") {
         setCriticalAlert(event);
       }
     });
@@ -160,6 +160,17 @@ export default function App() {
     } else {
       await startSimulation(speed);
       setIsLive(true);
+    }
+  };
+
+  const handleRefreshFeed = async () => {
+    if (!currentUser) return;
+    try {
+      const data = await fetchEvents();
+      setEvents(data);
+      setDisplayEvents(data);
+    } catch (err) {
+      console.error("Failed to refresh feed:", err);
     }
   };
 
@@ -225,6 +236,7 @@ export default function App() {
           }}
           onClose={() => {}} // Feed cannot be closed when it's the main view
           isSidebar={false}
+          onRefresh={handleRefreshFeed}
         />
       )}
 
@@ -237,6 +249,7 @@ export default function App() {
           }
           onClose={() => setFeedOpen(false)}
           isSidebar={true}
+          onRefresh={handleRefreshFeed}
         />
       )}
 

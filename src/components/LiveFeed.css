@@ -96,6 +96,15 @@
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.08) transparent;
+  overscroll-behavior-y: contain;
+}
+
+.pull-indicator {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }
 
 .feed-list::-webkit-scrollbar {
