@@ -610,9 +610,9 @@ function AddTweetModalContent({
 
       const detailedLocation = {
         street: location,
-        city: "",
-        pincode: "",
-        state: ""
+        city: city,
+        pincode: pincode,
+        state: stateName
       };
 
       response = await postCustomTweet(

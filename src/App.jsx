@@ -45,6 +45,9 @@ export default function App() {
   const [isPickingReportLocation, setIsPickingReportLocation] = useState(false);
   const [reportLocationCoords, setReportLocationCoords] = useState(null);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  
+  // Heatmap filtering state
+  const [heatmapSelectedStates, setHeatmapSelectedStates] = useState([]);
 
   // Fetch hotspots periodically
   useEffect(() => {
@@ -200,11 +203,26 @@ export default function App() {
   }
 
   if (userRole === "municipality") {
+    const heatmapStateCounts = displayEvents.reduce((acc, event) => {
+      const state = event.detailedLocation?.state || event.state;
+      if (state) {
+        acc[state] = (acc[state] || 0) + 1;
+      }
+      return acc;
+    }, {});
+
+    const filteredMapEvents = heatmapSelectedStates.length > 0 
+      ? displayEvents.filter(e => {
+          const state = e.detailedLocation?.state || e.state;
+          return heatmapSelectedStates.includes(state);
+        })
+      : displayEvents;
+
     return (
       <div id="app">
         {/* Render Map in background for Map Tab */}
         <LiveMap
-          events={displayEvents}
+          events={filteredMapEvents}
           heatmapActive={heatmapActive}
           selectedEvent={selectedEvent}
           isDarkMode={isDarkMode}
@@ -255,6 +273,9 @@ export default function App() {
           hotspots={hotspots}
           predictionData={predictionData}
           onSelectEvent={setSelectedEvent}
+          heatmapSelectedStates={heatmapSelectedStates}
+          heatmapStateCounts={heatmapStateCounts}
+          setHeatmapSelectedStates={setHeatmapSelectedStates}
         />
         
         {isAddModalOpen && (
