@@ -40,10 +40,18 @@ export default function AddTweetModal({
   const [message, setMessage] = useState("");
   const [aiWriteStatus, setAiWriteStatus] = useState("idle"); 
   const [mismatchWarning, setMismatchWarning] = useState("");
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isVideoRecording, setIsVideoRecording] = useState(false);
+  
   const hasReportInput = text.trim().length > 0 || Boolean(imageDataUrl) || Boolean(videoFrames) || Boolean(audioDataUrl);
   const { currentUser } = useAuth();
+  
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const cameraMediaRecorderRef = useRef(null);
+  const videoChunksRef = useRef([]);
 
   const [allLocations, setAllLocations] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
@@ -268,6 +276,107 @@ export default function AddTweetModal({
         reject(new Error("Failed to load video"));
       };
     });
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: true });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsCameraOpen(true);
+    } catch (err) {
+      console.error("Camera error:", err);
+      setStatus("error");
+      setMessage("Could not access camera.");
+    }
+  };
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraOpen(false);
+    setIsVideoRecording(false);
+  }, []);
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+    setImageDataUrl(dataUrl);
+    setVideoFrames(null);
+    setImageMeta({ filename: "camera_capture.jpg", type: "image/jpeg" });
+    stopCamera();
+  };
+
+  const toggleVideoRecording = () => {
+    if (isVideoRecording) {
+      cameraMediaRecorderRef.current.stop();
+      setIsVideoRecording(false);
+      setStatus("loading");
+      setMessage("Processing video...");
+    } else {
+      try {
+        const mediaRecorder = new MediaRecorder(streamRef.current);
+        cameraMediaRecorderRef.current = mediaRecorder;
+        videoChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) videoChunksRef.current.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const videoBlob = new Blob(videoChunksRef.current, { type: 'video/webm' });
+          videoBlob.name = "camera_video.webm"; // Mock file name
+          try {
+            const frames = await extractVideoFrames(videoBlob);
+            setVideoFrames(frames);
+            setImageDataUrl(null);
+            setImageMeta({ filename: "camera_video.webm", type: "video/webm" });
+            setStatus("idle");
+            setMessage("Video recorded successfully.");
+            stopCamera();
+          } catch (err) {
+            console.error(err);
+            setStatus("error");
+            setMessage("Failed to process video.");
+            stopCamera();
+          }
+        };
+
+        mediaRecorder.start();
+        setIsVideoRecording(true);
+      } catch (err) {
+        console.error(err);
+        setStatus("error");
+        setMessage("Could not start video recording.");
+      }
+    }
+  };
+
+  // Ensure camera stops when unmounting
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, [stopCamera]);
+
+  // Attach stream to video element when camera UI opens
+  useEffect(() => {
+    if (isCameraOpen && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [isCameraOpen]);
 
   const handleImageChange = async (e) => {
     const file = e.target.files?.[0];
@@ -532,12 +641,41 @@ export default function AddTweetModal({
 
           <div className="form-group">
             <label>Photo/Video Evidence (Optional)</label>
-            <input
-              type="file"
-              accept="image/*,video/*"
-              onChange={handleImageChange}
-              disabled={status === "loading"}
-            />
+            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+              <div style={{ flex: '1', minWidth: '200px' }}>
+                <span style={{ fontSize: '0.85em', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>📁 Upload File</span>
+                <input
+                  type="file"
+                  accept="image/*,video/*"
+                  onChange={handleImageChange}
+                  disabled={status === "loading"}
+                />
+              </div>
+              <div style={{ flex: '1', minWidth: '200px' }}>
+                <span style={{ fontSize: '0.85em', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>📸 Capture with Camera</span>
+                <button
+                  type="button"
+                  onClick={startCamera}
+                  disabled={status === "loading" || isCameraOpen}
+                  style={{ width: '100%', padding: '8px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                >
+                  Open Camera
+                </button>
+              </div>
+            </div>
+            
+            {isCameraOpen && (
+              <div className="camera-overlay" style={{ marginTop: '15px', position: 'relative', background: '#000', borderRadius: '8px', overflow: 'hidden' }}>
+                <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', display: 'block' }}></video>
+                <div className="camera-controls" style={{ display: 'flex', gap: '10px', padding: '10px', background: '#1e293b', justifyContent: 'center', flexWrap: 'wrap' }}>
+                  <button type="button" onClick={capturePhoto} disabled={isVideoRecording} style={{ background: '#3b82f6', color: 'white', padding: '8px 16px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}>📸 Take Photo</button>
+                  <button type="button" onClick={toggleVideoRecording} style={{ background: isVideoRecording ? '#ef4444' : '#10b981', color: 'white', padding: '8px 16px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}>
+                    {isVideoRecording ? "⏹ Stop Recording" : "⏺ Record Video"}
+                  </button>
+                  <button type="button" onClick={stopCamera} style={{ background: '#475569', color: 'white', padding: '8px 16px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </div>
+            )}
             {imageDataUrl && (
               <div className="image-preview">
                 <img src={imageDataUrl} alt="Selected pollution evidence" />
