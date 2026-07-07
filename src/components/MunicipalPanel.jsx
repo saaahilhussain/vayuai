@@ -11,6 +11,7 @@ import {
   assignEventWorker,
   deleteEventById,
   fetchWorkers,
+  updateWorkerManualStatus,
   POLLUTION_TYPES,
   timeAgo,
 } from "../utils/api";
@@ -57,6 +58,9 @@ export default function MunicipalPanel({
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState(null);
   const [actionStates, setActionStates] = useState({});
+  
+  // New state for assignment confirmation
+  const [pendingAssignment, setPendingAssignment] = useState(null);
 
   // Management state
   const [dashboard, setDashboard] = useState(null);
@@ -96,12 +100,11 @@ export default function MunicipalPanel({
       setDashboard(dashData);
       setEvents(eventsData.events || []);
       
-      // Inject mock "team strength" and "assigned work" info into workers 
-      // since our DB currently only has simple user records for workers.
+      // Map real team strength and calculate assigned status/counts
       const enrichedWorkers = (workersData.workers || []).map(w => ({
         ...w,
-        teamStrength: Math.floor(Math.random() * 4) + 2, // 2-5 members
-        status: eventsData.events.some(e => e.assignedTo === w.uid && !['resolved', 'cleanup_done'].includes(e.status)) ? 'busy' : 'idle',
+        teamStrength: w.teamStrength || 1,
+        status: w.manualStatus === 'idle' ? 'idle' : (eventsData.events.some(e => e.assignedTo === w.uid && !['resolved', 'cleanup_done'].includes(e.status)) ? 'busy' : 'idle'),
         assignedCount: eventsData.events.filter(e => e.assignedTo === w.uid).length
       }));
       setWorkers(enrichedWorkers);
@@ -137,6 +140,21 @@ export default function MunicipalPanel({
     setActionLoading(eventId);
     try {
       await assignEventWorker(currentUser, eventId, workerUid);
+      // Clear manual idle status since they are now being assigned work
+      await updateWorkerManualStatus(currentUser, workerUid, 'clear');
+      await loadManagementData();
+    } catch (err) {
+      alert(`Failed: ${err.message}`);
+    } finally {
+      setActionLoading(null);
+      setPendingAssignment(null); // Clear confirmation state if any
+    }
+  };
+
+  const handleMarkIdle = async (workerUid) => {
+    setActionLoading(workerUid); // reuse for local spinner
+    try {
+      await updateWorkerManualStatus(currentUser, workerUid, 'idle');
       await loadManagementData();
     } catch (err) {
       alert(`Failed: ${err.message}`);
@@ -311,11 +329,19 @@ export default function MunicipalPanel({
                     <div className="mp-assignment-section">
                       <select 
                         className="mp-select mp-assign-select"
+                        value="" // Always blank by default to act as a dispatch button
                         onChange={(e) => {
-                          if(e.target.value) handleAssign(event.id, e.target.value);
+                          if (e.target.value) {
+                            const selectedWorker = workers.find(w => w.uid === e.target.value);
+                            setPendingAssignment({
+                              eventId: event.id,
+                              workerUid: e.target.value,
+                              workerName: selectedWorker?.name || 'Worker',
+                              eventLocation: event.locationName || 'Unknown Location'
+                            });
+                          }
                         }}
                         disabled={isActing}
-                        defaultValue=""
                       >
                         <option value="" disabled>Dispatch Idle Team...</option>
                         {workers.filter(w => w.status === 'idle').map(w => (
@@ -361,7 +387,15 @@ export default function MunicipalPanel({
                             disabled={isActing || workers.length === 0}
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => {
-                              if (e.target.value) handleAssign(event.id, e.target.value);
+                              if (e.target.value) {
+                                const selectedWorker = workers.find(w => w.uid === e.target.value);
+                                setPendingAssignment({
+                                  eventId: event.id,
+                                  workerUid: e.target.value,
+                                  workerName: selectedWorker?.name || 'Worker',
+                                  eventLocation: event.locationName || 'Unknown Location'
+                                });
+                              }
                             }}
                           >
                             <option value="" disabled>
@@ -555,10 +589,10 @@ export default function MunicipalPanel({
             <div key={worker.uid} className={`mp-team-card ${worker.status === 'idle' ? 'team-idle' : 'team-busy'}`}>
               <div className="mp-team-header">
                 <div className="mp-team-avatar">
-                  {worker.name.charAt(0).toUpperCase()}
+                  {(worker.teamName || worker.name).charAt(0).toUpperCase()}
                 </div>
                 <div className="mp-team-info">
-                  <h3>{worker.name}</h3>
+                  <h3>{worker.teamName || worker.name}</h3>
                   <span className="mp-team-email">{worker.email}</span>
                 </div>
                 <span className={`mp-team-status-badge ${worker.status}`}>
@@ -573,6 +607,39 @@ export default function MunicipalPanel({
                 <div className="mp-team-stat">
                   <span className="mp-team-stat-val">{worker.assignedCount}</span>
                   <span className="mp-team-stat-label">Assigned Work</span>
+                </div>
+                {worker.status === 'busy' && (
+                  <div className="mp-team-stat" style={{ justifyContent: 'center' }}>
+                    <button 
+                      onClick={() => handleMarkIdle(worker.uid)}
+                      disabled={actionLoading === worker.uid}
+                      style={{ background: 'transparent', border: '1px solid #3b82f6', color: '#3b82f6', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem' }}
+                    >
+                      {actionLoading === worker.uid ? '...' : 'Mark Idle'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="mp-team-details" style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #374151', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.85rem' }}>
+                <div>
+                  <span style={{ color: '#9ca3af', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Lead Worker</span>
+                  <span>{worker.workerName || "N/A"}</span>
+                </div>
+                <div>
+                  <span style={{ color: '#9ca3af', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Gender</span>
+                  <span>{worker.gender || "N/A"}</span>
+                </div>
+                <div>
+                  <span style={{ color: '#9ca3af', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Mobile</span>
+                  <span>{worker.mobile || "N/A"}</span>
+                </div>
+                <div>
+                  <span style={{ color: '#9ca3af', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Govt ID</span>
+                  <span>{worker.govtId || "N/A"}</span>
+                </div>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <span style={{ color: '#9ca3af', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Office Address</span>
+                  <span>{worker.officeAddress || "N/A"}</span>
                 </div>
               </div>
             </div>
@@ -603,6 +670,33 @@ export default function MunicipalPanel({
   // Full Screen Dashboard Layout
   return (
     <div className={`municipal-dashboard-layout ${activeTab === 'map' ? 'transparent-layout' : ''}`}>
+      {pendingAssignment && (
+        <div className="mp-modal-overlay" style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}>
+          <div className="mp-modal-content" style={{ background: '#1e293b', padding: '24px', borderRadius: '12px', maxWidth: '400px', width: '90%', border: '1px solid #374151' }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '1.25rem' }}>Confirm Dispatch</h3>
+            <p style={{ margin: '0 0 16px 0', color: '#cbd5e1' }}>
+              Are you sure you want to dispatch <strong>{pendingAssignment.workerName}</strong> to the incident at <strong>{pendingAssignment.eventLocation}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button 
+                className="mp-btn mp-btn-secondary" 
+                onClick={() => setPendingAssignment(null)}
+                disabled={actionLoading === pendingAssignment.eventId}
+              >
+                Cancel
+              </button>
+              <button 
+                className="mp-btn mp-btn-primary" 
+                onClick={() => handleAssign(pendingAssignment.eventId, pendingAssignment.workerUid)}
+                disabled={actionLoading === pendingAssignment.eventId}
+              >
+                {actionLoading === pendingAssignment.eventId ? 'Dispatching...' : 'Confirm Dispatch'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar Navigation */}
       <div className="mdl-sidebar">
         <div className="mdl-brand">

@@ -119,13 +119,43 @@ export async function listWorkers(req, res) {
     const workers = snapshot.docs.map((doc) => ({
       uid: doc.id,
       email: doc.data().email,
-      name: doc.data().name || doc.data().email,
+      name: doc.data().teamName || doc.data().name || doc.data().email, // Fallback for UI that still expects "name"
+      teamName: doc.data().teamName || doc.data().name || "",
+      workerName: doc.data().workerName || "",
+      gender: doc.data().gender || "",
+      teamStrength: doc.data().teamStrength || 1,
+      govtId: doc.data().govtId || "",
+      mobile: doc.data().mobile || "",
+      officeAddress: doc.data().officeAddress || "",
+      manualStatus: doc.data().manualStatus || null,
     }));
 
     res.json({ workers });
   } catch (err) {
     console.error("Error fetching workers:", err.message);
     res.json({ workers: [] });
+  }
+}
+
+/**
+ * PATCH /api/municipality/workers/:uid/status — Update worker manual status override
+ */
+export async function updateWorkerStatus(req, res) {
+  const { uid } = req.params;
+  const { status } = req.body;
+
+  try {
+    // We only support marking as 'idle' for now, or clearing it.
+    // If status is 'clear', we delete the field.
+    if (status === 'clear') {
+      await adminDb.collection(USERS_COLLECTION).doc(uid).update({ manualStatus: null });
+    } else {
+      await adminDb.collection(USERS_COLLECTION).doc(uid).update({ manualStatus: status });
+    }
+    res.json({ success: true, status });
+  } catch (err) {
+    console.error("Error updating worker status:", err.message);
+    res.status(500).json({ error: err.message });
   }
 }
 

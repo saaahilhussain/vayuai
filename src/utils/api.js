@@ -237,6 +237,35 @@ export async function fetchWorkerAssignments(user) {
   return res.json();
 }
 
+export async function fetchWorkerProfile(user) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/worker/profile`, { headers });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function updateWorkerProfile(user, data) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/worker/profile`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function updateWorkerManualStatus(user, workerUid, status) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/municipality/workers/${workerUid}/status`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
 export async function updateWorkerEventStatus(user, eventId, status) {
   const headers = await authHeaders(user);
   const res = await fetch(`${API_BASE}/worker/events/${eventId}/status`, {

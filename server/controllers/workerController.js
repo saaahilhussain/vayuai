@@ -1,5 +1,8 @@
 import { store } from "../services/shared.js";
 import { verifyResolutionImage } from "../services/imageAnalysis.js";
+import { adminDb } from "../config/firebaseAdmin.js";
+
+const USERS_COLLECTION = "users";
 
 /**
  * GET /api/worker/assignments — List events assigned to the authenticated worker
@@ -124,4 +127,54 @@ export async function verifyEvent(req, res) {
   }
 
   res.json({ success: true, verification: result, event: updated });
+}
+
+/**
+ * GET /api/worker/profile
+ */
+export async function getProfile(req, res) {
+  try {
+    const doc = await adminDb.collection(USERS_COLLECTION).doc(req.user.uid).get();
+    if (!doc.exists) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+    const data = doc.data();
+    res.json({
+      teamName: data.teamName || data.name || "",
+      workerName: data.workerName || "",
+      gender: data.gender || "",
+      teamStrength: data.teamStrength || 1,
+      govtId: data.govtId || "",
+      mobile: data.mobile || "",
+      officeAddress: data.officeAddress || "",
+      email: data.email
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}
+
+/**
+ * PATCH /api/worker/profile
+ */
+export async function updateProfile(req, res) {
+  const { teamName, workerName, gender, teamStrength, govtId, mobile, officeAddress } = req.body;
+  try {
+    const updateData = {};
+    if (teamName !== undefined) updateData.teamName = teamName;
+    if (workerName !== undefined) updateData.workerName = workerName;
+    if (gender !== undefined) updateData.gender = gender;
+    if (teamStrength !== undefined) updateData.teamStrength = parseInt(teamStrength, 10) || 1;
+    if (govtId !== undefined) updateData.govtId = govtId;
+    if (mobile !== undefined) updateData.mobile = mobile;
+    if (officeAddress !== undefined) updateData.officeAddress = officeAddress;
+
+    // Backward compatibility for existing checks on "name"
+    if (teamName !== undefined) updateData.name = teamName;
+
+    await adminDb.collection(USERS_COLLECTION).doc(req.user.uid).update(updateData);
+    res.json({ success: true, profile: updateData });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }

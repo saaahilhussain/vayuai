@@ -6,6 +6,7 @@ import {
   assignWorker,
   deleteEvent,
   listWorkers,
+  updateWorkerStatus,
   getDashboard,
 } from "../controllers/municipalityController.js";
 
@@ -17,6 +18,7 @@ router.use(verifyToken, requireRole(["municipality"]));
 router.get("/dashboard", getDashboard);
 router.get("/events", listEvents);
 router.get("/workers", listWorkers);
+router.patch("/workers/:uid/status", updateWorkerStatus);
 router.patch("/events/:id/status", updateEventStatus);
 router.patch("/events/:id/assign", assignWorker);
 router.delete("/events/:id", deleteEvent);
