@@ -7,6 +7,8 @@ import AuthModal from "./components/AuthModal";
 import HotspotPanel from "./components/HotspotPanel";
 import PredictionPanel from "./components/PredictionPanel";
 import MunicipalPanel from "./components/MunicipalPanel";
+import WorkerPanel from "./components/WorkerPanel";
+import CitizenPanel from "./components/CitizenPanel";
 import { useAuth } from "./context/AuthContext";
 import {
   fetchEvents,
@@ -36,6 +38,8 @@ export default function App() {
   const [hotspotsActive, setHotspotsActive] = useState(false);
   const [predictionsActive, setPredictionsActive] = useState(false);
   const [municipalActive, setMunicipalActive] = useState(false);
+  const [workerActive, setWorkerActive] = useState(false);
+  const [citizenActive, setCitizenActive] = useState(false);
   const [hotspots, setHotspots] = useState([]);
   const [predictionData, setPredictionData] = useState(null);
   const [isPickingReportLocation, setIsPickingReportLocation] = useState(false);
@@ -93,10 +97,36 @@ export default function App() {
   useEffect(() => {
     const es = createEventStream((event) => {
       setEvents((prev) => {
+        // Find if this is an update to an existing event
+        const existingEvent = prev.find(e => e.id === event.id);
+        
+        // Notify if it's an update for the citizen
+        if (existingEvent && userRole === 'citizen' && existingEvent.status !== event.status && event.citizenUid === currentUser?.uid) {
+          if (Notification.permission === 'granted') {
+            new Notification('Complaint Update', { body: `Your report status changed to: ${event.status.replace('_', ' ')}` });
+          }
+        }
+        // Notify if it's an update for the worker
+        if (userRole === 'worker' && event.assignedTo === currentUser?.uid) {
+          if (!existingEvent || existingEvent.status !== event.status) {
+            if (Notification.permission === 'granted') {
+              new Notification('New Task Update', { body: `Task status: ${event.status.replace('_', ' ')}` });
+            }
+          }
+        }
+
+        if (existingEvent) {
+          return prev.map(e => e.id === event.id ? event : e);
+        }
         const updated = [...prev, event];
         return updated.slice(-500);
       });
+
       setDisplayEvents((prev) => {
+        const existingEvent = prev.find(e => e.id === event.id);
+        if (existingEvent) {
+          return prev.map(e => e.id === event.id ? event : e);
+        }
         const updated = [...prev, event];
         return updated.slice(-500);
       });
@@ -107,7 +137,7 @@ export default function App() {
     });
 
     return () => es.close();
-  }, []);
+  }, [currentUser, userRole]);
 
   const handleToggleLive = async () => {
     if (isLive) {
@@ -222,6 +252,16 @@ export default function App() {
         <MunicipalPanel onClose={() => setMunicipalActive(false)} />
       )}
 
+      {/* Worker Panel */}
+      {mapOpen && workerActive && (
+        <WorkerPanel onClose={() => setWorkerActive(false)} />
+      )}
+
+      {/* Citizen Panel */}
+      {mapOpen && citizenActive && (
+        <CitizenPanel onClose={() => setCitizenActive(false)} />
+      )}
+
       {/* Top right Feed Toggle Button when Map is Open */}
       {mapOpen && (
         <button
@@ -242,7 +282,7 @@ export default function App() {
           >
             {isLive ? "Live" : "Paused"}
           </button>
-          {mapOpen && (
+          {mapOpen && userRole !== "citizen" && (
             <>
               <button
                 className={`cb-btn ${heatmapActive ? "cb-active" : ""}`}
@@ -268,29 +308,61 @@ export default function App() {
 
           {mapOpen && (
             <>
-              <button
-                className={`cb-btn ${hotspotsActive ? "cb-active" : ""}`}
-                onClick={() => setHotspotsActive(!hotspotsActive)}
-              >
-                Hotspots
-              </button>
-              <button
-                className={`cb-btn ${predictionsActive ? "cb-active" : ""}`}
-                onClick={() => setPredictionsActive(!predictionsActive)}
-              >
-                Forecast
-              </button>
-              <button
-                className={`cb-btn ${municipalActive ? "cb-active" : ""}`}
-                onClick={() => setMunicipalActive(!municipalActive)}
-                style={
-                  municipalActive
-                    ? {}
-                    : { color: "#38bdf8", borderColor: "rgba(56,189,248,0.3)" }
-                }
-              >
-                Command Center
-              </button>
+              {userRole !== "citizen" && (
+                <>
+                  <button
+                    className={`cb-btn ${hotspotsActive ? "cb-active" : ""}`}
+                    onClick={() => setHotspotsActive(!hotspotsActive)}
+                  >
+                    Hotspots
+                  </button>
+                  <button
+                    className={`cb-btn ${predictionsActive ? "cb-active" : ""}`}
+                    onClick={() => setPredictionsActive(!predictionsActive)}
+                  >
+                    Forecast
+                  </button>
+                </>
+              )}
+              {userRole === "municipality" && (
+                <button
+                  className={`cb-btn ${municipalActive ? "cb-active" : ""}`}
+                  onClick={() => setMunicipalActive(!municipalActive)}
+                  style={
+                    municipalActive
+                      ? {}
+                      : { color: "#38bdf8", borderColor: "rgba(56,189,248,0.3)" }
+                  }
+                >
+                  Command Center
+                </button>
+              )}
+              {userRole === "worker" && (
+                <button
+                  className={`cb-btn ${workerActive ? "cb-active" : ""}`}
+                  onClick={() => setWorkerActive(!workerActive)}
+                  style={
+                    workerActive
+                      ? {}
+                      : { color: "#4ade80", borderColor: "rgba(34,197,94,0.3)" }
+                  }
+                >
+                  My Tasks
+                </button>
+              )}
+              {userRole === "citizen" && (
+                <button
+                  className={`cb-btn ${citizenActive ? "cb-active" : ""}`}
+                  onClick={() => setCitizenActive(!citizenActive)}
+                  style={
+                    citizenActive
+                      ? {}
+                      : { color: "#f472b6", borderColor: "rgba(244,114,182,0.3)" }
+                  }
+                >
+                  My Complaints
+                </button>
+              )}
             </>
           )}
 

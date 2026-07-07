@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { postCustomTweet, fetchLocations, aiWriteReport } from "../utils/api";
+import { postCustomTweet, postVoiceTweet, fetchLocations, aiWriteReport } from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 import "./AddTweetModal.css";
 
@@ -28,19 +28,22 @@ export default function AddTweetModal({
   onClearPickedLocation,
 }) {
   const [text, setText] = useState("");
-  const [handle, setHandle] = useState("@citizen");
   const [location, setLocation] = useState("");
   const [locationCoords, setLocationCoords] = useState(null);
   const [locationStatus, setLocationStatus] = useState("idle");
   const [imageDataUrl, setImageDataUrl] = useState(null);
-  const [videoFrames, setVideoFrames] = useState(null); // Array of base64 images
+  const [videoFrames, setVideoFrames] = useState(null); 
   const [imageMeta, setImageMeta] = useState(null);
-  const [status, setStatus] = useState("idle"); // idle, loading, success, error
+  const [audioDataUrl, setAudioDataUrl] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [status, setStatus] = useState("idle"); 
   const [message, setMessage] = useState("");
-  const [aiWriteStatus, setAiWriteStatus] = useState("idle"); // idle, loading
+  const [aiWriteStatus, setAiWriteStatus] = useState("idle"); 
   const [mismatchWarning, setMismatchWarning] = useState("");
-  const hasReportInput = text.trim().length > 0 || Boolean(imageDataUrl) || Boolean(videoFrames);
+  const hasReportInput = text.trim().length > 0 || Boolean(imageDataUrl) || Boolean(videoFrames) || Boolean(audioDataUrl);
   const { currentUser } = useAuth();
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   const [allLocations, setAllLocations] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
@@ -135,12 +138,54 @@ export default function AddTweetModal({
     }
   };
 
-  const handleSelectSuggestion = (loc) => {
-    setLocation(loc);
-    setLocationCoords(null);
-    onClearPickedLocation?.();
-    setLocationStatus("manual");
+  const handleSelectSuggestion = (sug) => {
+    setLocation(sug);
     setShowSuggestions(false);
+  };
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      setStatus("loading");
+      setMessage("Processing audio...");
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            audioChunksRef.current.push(e.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const reader = new FileReader();
+          reader.readAsDataURL(audioBlob);
+          reader.onloadend = () => {
+            setAudioDataUrl(reader.result);
+            setStatus("idle");
+            setMessage("Audio recorded successfully. Ready to submit.");
+          };
+          stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+        setStatus("idle");
+        setMessage("Recording... Click again to stop.");
+        setAudioDataUrl(null);
+        setText(""); // Clear text if recording voice
+      } catch (err) {
+        console.error(err);
+        setStatus("error");
+        setMessage("Could not access microphone.");
+      }
+    }
   };
 
   const resizeImage = (file) =>
@@ -315,15 +360,27 @@ export default function AddTweetModal({
     setMessage("");
 
     try {
-      const response = await postCustomTweet(
-        text,
-        handle,
-        location,
-        videoFrames ? null : imageDataUrl,
-        videoFrames,
-        imageMeta,
-        locationCoords,
-      );
+      let response;
+      if (audioDataUrl) {
+        response = await postVoiceTweet(
+          audioDataUrl,
+          location,
+          locationCoords,
+          currentUser?.uid
+        );
+      } else {
+        response = await postCustomTweet(
+          text,
+          currentUser?.email || "@citizen",
+          location,
+          videoFrames ? null : imageDataUrl,
+          videoFrames,
+          imageMeta,
+          locationCoords,
+          null, // storageUrl
+          currentUser?.uid
+        );
+      }
 
       if (response.accepted) {
         setStatus("success");
@@ -375,17 +432,6 @@ export default function AddTweetModal({
         </div>
 
         <form onSubmit={handleSubmit} className="modal-form">
-          <div className="form-group">
-            <label>User Handle</label>
-            <input
-              type="text"
-              value={handle}
-              onChange={(e) => setHandle(e.target.value)}
-              placeholder="@citizen"
-              disabled={status === "loading"}
-            />
-          </div>
-
           <div
             className="form-group"
             ref={wrapperRef}
@@ -446,30 +492,52 @@ export default function AddTweetModal({
           <div className="form-group">
             <div className="ai-write-label-row">
               <label>Report Content</label>
-              <button
-                type="button"
-                className={`btn-ai-write ${aiWriteStatus === "loading" ? "loading" : ""}`}
-                onClick={handleAiWrite}
-                disabled={!imageDataUrl || status === "loading" || aiWriteStatus === "loading"}
-                title={!imageDataUrl ? "Upload an image first to use AI Write" : "Let AI write or improve the report description"}
-              >
-                {aiWriteStatus === "loading" ? "✨ Writing..." : "✨ AI Write"}
-              </button>
+              <div style={{display: 'flex', gap: '8px'}}>
+                <button
+                  type="button"
+                  className={`btn-voice ${isRecording ? 'recording' : ''}`}
+                  onClick={toggleRecording}
+                  disabled={status === "loading"}
+                >
+                  {isRecording ? "⏹ Stop Recording" : "🎤 Voice Report"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ai-write"
+                  onClick={handleAiWrite}
+                  disabled={
+                    !imageDataUrl ||
+                    status === "loading" ||
+                    aiWriteStatus === "loading"
+                  }
+                >
+                  {aiWriteStatus === "loading" ? "Thinking..." : "✨ AI Write"}
+                </button>
+              </div>
             </div>
+            
+            {audioDataUrl && (
+              <div className="audio-preview">
+                <audio src={audioDataUrl} controls />
+                <button type="button" onClick={() => setAudioDataUrl(null)}>Remove Audio</button>
+              </div>
+            )}
+
+            {!audioDataUrl && (
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Describe the pollution issue..."
+                rows="3"
+                disabled={status === "loading" || isRecording}
+              ></textarea>
+            )}
+            
             {mismatchWarning && (
               <div className="mismatch-warning">
                 ⚠️ {mismatchWarning}
               </div>
             )}
-            <div className={`textarea-wrap ${aiWriteStatus === "loading" ? "textarea-shimmer" : ""}`}>
-              <textarea
-                value={text}
-                onChange={(e) => { setText(e.target.value); setMismatchWarning(""); }}
-                placeholder="E.g. Thick black smoke from garbage burning near Boragaon right now! Eyes burning, can't breathe. Add a photo if text is brief."
-                rows={4}
-                disabled={status === "loading" || aiWriteStatus === "loading"}
-              />
-            </div>
           </div>
 
           <div className="form-group">

@@ -21,9 +21,13 @@ const RESOURCE_ICONS = {
 };
 
 const STATUS_CONFIG = {
-  open: { label: "Open", color: "#ef4444", icon: "🔴" },
-  in_progress: { label: "In Progress", color: "#f59e0b", icon: "🟡" },
-  resolved: { label: "Resolved", color: "#22c55e", icon: "🟢" },
+  pending_review: { label: "Needs Approval", color: "#6b7280", icon: "🕒" },
+  open: { label: "Open (Unassigned)", color: "#ef4444", icon: "🔴" },
+  assigned: { label: "Assigned", color: "#8b5cf6", icon: "👥" },
+  worker_en_route: { label: "Worker En Route", color: "#f59e0b", icon: "🚚" },
+  reached: { label: "Worker Reached", color: "#f59e0b", icon: "📍" },
+  cleanup_done: { label: "Needs Final Review", color: "#0ea5e9", icon: "🤖" },
+  resolved: { label: "Resolved", color: "#22c55e", icon: "✅" },
 };
 
 export default function MunicipalPanel({ onClose }) {
@@ -256,7 +260,25 @@ export default function MunicipalPanel({ onClose }) {
                   <span className="mp-stat-value">{dashboard.byStatus?.resolved || 0}</span>
                   <span className="mp-stat-label">Resolved</span>
                 </div>
+                <div className="mp-stat" style={{ gridColumn: 'span 2' }}>
+                  <span className="mp-stat-value">{dashboard.avgResponseTime || 'N/A'}</span>
+                  <span className="mp-stat-label">Avg Response Time</span>
+                </div>
               </div>
+              {dashboard.wardPerformance && (
+                <div className="mp-stat-row" style={{ marginTop: '10px' }}>
+                  <div className="mp-stat" style={{ gridColumn: 'span 5' }}>
+                    <span className="mp-stat-label" style={{ marginBottom: '5px' }}>Ward Performance (Resolved / Total)</span>
+                    <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                      {Object.entries(dashboard.wardPerformance).map(([ward, stats]) => (
+                        <div key={ward} style={{ fontSize: '0.85rem' }}>
+                          <strong>{ward}:</strong> {stats.resolved}/{stats.total}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -312,7 +334,21 @@ export default function MunicipalPanel({ onClose }) {
                         >
                           {statusCfg.icon} {statusCfg.label}
                         </span>
-                        <span className="mp-severity-badge">{event.severity}</span>
+                        <select
+                          className="mp-severity-badge"
+                          value={event.severityLevel || 1}
+                          onChange={(e) => {
+                            // Quick Priority Override (simulated API call)
+                            console.log(`Override priority to ${e.target.value}`);
+                          }}
+                          style={{ border: 'none', background: 'transparent', color: 'inherit', fontWeight: 'bold' }}
+                          title="Override Priority"
+                        >
+                          <option value="1">low</option>
+                          <option value="2">moderate</option>
+                          <option value="3">high</option>
+                          <option value="4">critical</option>
+                        </select>
                       </div>
                     </div>
 
@@ -340,6 +376,25 @@ export default function MunicipalPanel({ onClose }) {
 
                     {/* Actions */}
                     <div className="mp-event-actions">
+                      {event.status === "pending_review" && (
+                        <>
+                          <button
+                            className="mp-btn mp-btn-primary mp-btn-sm"
+                            disabled={isActing}
+                            onClick={() => handleStatusChange(event.id, "open")}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="mp-btn mp-btn-danger mp-btn-sm"
+                            disabled={isActing}
+                            onClick={() => handleDelete(event.id)}
+                          >
+                            Reject (Spam)
+                          </button>
+                        </>
+                      )}
+
                       {event.status === "open" && (
                         <>
                           <select
@@ -351,32 +406,39 @@ export default function MunicipalPanel({ onClose }) {
                             }}
                           >
                             <option value="" disabled>
-                              {workers.length === 0 ? "No workers" : "Assign worker..."}
+                              {workers.length === 0 ? "No teams" : "Assign to Team..."}
                             </option>
-                            {workers.map((w) => (
-                              <option key={w.uid} value={w.uid}>
-                                {w.name}
-                              </option>
-                            ))}
+                            <optgroup label="Sanitation">
+                              <option value="sanitation_team_1">Sanitation Team 1</option>
+                              <option value="sanitation_team_2">Sanitation Team 2</option>
+                            </optgroup>
+                            <optgroup label="Enforcement">
+                              <option value="police_squad_alpha">Police Squad Alpha</option>
+                            </optgroup>
                           </select>
+                        </>
+                      )}
+
+                      {event.status === "cleanup_done" && (
+                        <>
                           <button
-                            className="mp-btn mp-btn-primary mp-btn-sm"
+                            className="mp-btn mp-btn-resolve mp-btn-sm"
                             disabled={isActing}
-                            onClick={() => handleStatusChange(event.id, "in_progress")}
+                            onClick={() => handleStatusChange(event.id, "resolved")}
+                            title={event.aiResolutionScore ? `AI Score: ${event.aiResolutionScore}` : "No AI Score"}
                           >
-                            Mark In Progress
+                            ✅ Finalize (AI Confirmed)
+                          </button>
+                          <button
+                            className="mp-btn mp-btn-secondary mp-btn-sm"
+                            disabled={isActing}
+                            onClick={() => handleStatusChange(event.id, "assigned")}
+                          >
+                            ↩ Reject & Reassign
                           </button>
                         </>
                       )}
-                      {event.status === "in_progress" && (
-                        <button
-                          className="mp-btn mp-btn-resolve mp-btn-sm"
-                          disabled={isActing}
-                          onClick={() => handleStatusChange(event.id, "resolved")}
-                        >
-                          ✅ Resolve
-                        </button>
-                      )}
+
                       {event.status === "resolved" && (
                         <button
                           className="mp-btn mp-btn-secondary mp-btn-sm"

@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google-cloud/speech": "^7.5.0",
     "@vis.gl/react-google-maps": "^1.9.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",

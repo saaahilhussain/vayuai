@@ -61,6 +61,7 @@ export async function postCustomTweet(
   imageMeta = null,
   locationCoords = null,
   storageUrl = null,
+  citizenUid = null,
 ) {
   const res = await fetch(`${API_BASE}/tweet`, {
     method: 'POST',
@@ -74,6 +75,21 @@ export async function postCustomTweet(
       imageMeta,
       locationCoords,
       storageUrl,
+      citizenUid,
+    }),
+  });
+  return res.json();
+}
+
+export async function postVoiceTweet(audioDataUrl, location, locationCoords, citizenUid) {
+  const res = await fetch(`${API_BASE}/voice`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      audioDataUrl,
+      location,
+      locationCoords,
+      citizenUid,
     }),
   });
   return res.json();
@@ -178,6 +194,57 @@ export async function deleteEventById(user, eventId) {
 export async function fetchWorkers(user) {
   const headers = await authHeaders(user);
   const res = await fetch(`${API_BASE}/municipality/workers`, { headers });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+// --- Citizen APIs (require auth token + citizen role) ---
+
+export async function fetchCitizenEvents(user) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/citizen/events`, { headers });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function submitEventFeedback(user, eventId, rating) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/citizen/events/${eventId}/feedback`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ rating }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+// --- Worker APIs (require auth token + worker role) ---
+
+export async function fetchWorkerAssignments(user) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/worker/assignments`, { headers });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function updateWorkerEventStatus(user, eventId, status) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/worker/events/${eventId}/status`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function verifyWorkerEvent(user, eventId, imageDataUrl, note) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/worker/events/${eventId}/verify`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ imageDataUrl, note }),
+  });
   if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }

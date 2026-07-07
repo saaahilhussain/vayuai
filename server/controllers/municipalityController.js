@@ -139,15 +139,44 @@ export function getDashboard(req, res) {
     (e) => now - new Date(e.timestamp).getTime() < 24 * 3600 * 1000,
   );
 
-  const byStatus = { open: 0, in_progress: 0, resolved: 0 };
+  const byStatus = { pending_review: 0, open: 0, assigned: 0, worker_en_route: 0, reached: 0, cleanup_done: 0, resolved: 0 };
   const bySeverity = { critical: 0, high: 0, moderate: 0, low: 0 };
+  const wardPerformance = {};
+  let totalResponseTimeMs = 0;
+  let resolvedCount = 0;
+
+  for (const e of events) { // Compute over all events for Ward Performance
+    const status = e.status || "pending_review";
+    const ward = e.locationName || "Unknown";
+    
+    if (!wardPerformance[ward]) {
+      wardPerformance[ward] = { total: 0, resolved: 0 };
+    }
+    wardPerformance[ward].total++;
+    
+    if (status === "resolved") {
+      wardPerformance[ward].resolved++;
+      
+      if (e.resolvedAt && e.timestamp) {
+        totalResponseTimeMs += (new Date(e.resolvedAt) - new Date(e.timestamp));
+        resolvedCount++;
+      }
+    }
+  }
 
   for (const e of last24h) {
-    const status = e.status || "open";
+    const status = e.status || "pending_review";
     byStatus[status] = (byStatus[status] || 0) + 1;
     if (bySeverity[e.severity] !== undefined) {
       bySeverity[e.severity]++;
     }
+  }
+
+  let avgResponseTime = "N/A";
+  if (resolvedCount > 0) {
+    const avgMs = totalResponseTimeMs / resolvedCount;
+    const avgHrs = (avgMs / (1000 * 60 * 60)).toFixed(1);
+    avgResponseTime = `${avgHrs}h`;
   }
 
   res.json({
@@ -155,8 +184,10 @@ export function getDashboard(req, res) {
     last24h: last24h.length,
     byStatus,
     bySeverity,
+    wardPerformance,
+    avgResponseTime,
     criticalOpen: last24h.filter(
-      (e) => e.severity === "critical" && (e.status || "open") === "open",
+      (e) => e.severity === "critical" && (e.status || "pending_review") !== "resolved",
     ).length,
   });
 }

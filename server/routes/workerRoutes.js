@@ -1,0 +1,18 @@
+import express from "express";
+import { verifyToken, requireRole } from "../middleware/authMiddleware.js";
+import {
+  getAssignments,
+  updateAssignmentStatus,
+  verifyEvent
+} from "../controllers/workerController.js";
+
+const router = express.Router();
+
+// All worker routes require authentication + worker role
+router.use(verifyToken, requireRole(["worker"]));
+
+router.get("/assignments", getAssignments);
+router.patch("/events/:id/status", updateAssignmentStatus);
+router.post("/events/:id/verify", verifyEvent);
+
+export default router;

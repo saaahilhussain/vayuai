@@ -163,9 +163,11 @@ class FirestoreEventStore {
     event.corroboratedBy = [event.handle];
 
     // Add lifecycle fields for RBAC (Phase 4/5)
-    event.status = event.status || "open";           // open | in_progress | resolved
-    event.assignedTo = event.assignedTo || null;      // worker uid
+    event.status = event.status || "pending_review";  // pending_review | open | assigned | worker_en_route | reached | cleanup_done | resolved
+    event.citizenUid = event.citizenUid || null;
+    event.assignedTo = event.assignedTo || null;      // team/worker uid
     event.resolutionProofUrl = event.resolutionProofUrl || null;
+    event.aiResolutionScore = event.aiResolutionScore || null;
 
     this.events.push(event);
     if (this.events.length > this.maxEvents) {

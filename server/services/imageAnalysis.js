@@ -417,4 +417,86 @@ JSON schema:
   }
 }
 
+export async function verifyResolutionImage(beforeText, beforeType, afterImageDataUrl) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return { available: false, error: "GEMINI_API_KEY not configured" };
+  }
+
+  const image = parseDataUrl(afterImageDataUrl);
+  if (!image) {
+    return { available: false, error: "Invalid image data URL format" };
+  }
+
+  const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const prompt = `
+You are an environmental inspector AI for VayuAI.
+Your task is to verify if a pollution incident has been successfully resolved based on an 'after' photo uploaded by a field worker.
+
+Context of original incident:
+- Reported Type: ${beforeType}
+- Description: ${beforeText}
+
+Task: Analyze this 'after' image. Does it show that the pollution has been cleaned up, extinguished, or resolved?
+Respond STRICTLY with a JSON object.
+
+Schema:
+{
+  "isResolved": true,
+  "resolutionScore": 0.95,
+  "reasoning": "Brief explanation of what you see (e.g. 'The garbage pile has been cleared and the area is clean.')"
+}
+`;
+
+  try {
+    const payload = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: image.mimeType,
+                data: image.data,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: "application/json",
+      },
+    };
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Gemini API Error: ${res.status} ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    const rawText = extractResponseText(data);
+    const result = extractJson(rawText);
+
+    if (!result) throw new Error("Failed to parse Gemini JSON response");
+
+    return {
+      available: true,
+      isResolved: !!result.isResolved,
+      resolutionScore: result.resolutionScore || 0,
+      reasoning: result.reasoning || "",
+    };
+  } catch (error) {
+    console.error("Gemini Resolution Verification Error:", error.message);
+    return { available: false, error: error.message };
+  }
+}
+
 export { analyzePollutionImage, analyzeVideoFrames, generateReportDescription };
