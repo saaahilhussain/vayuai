@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { POLLUTION_TYPES, timeAgo } from '../utils/api';
 import './LiveFeed.css';
 
-export default function LiveFeed({ events, onSelectEvent, onClose, isSidebar = false, onRefresh }) {
+export default function LiveFeed({ events, onSelectEvent, onClose, isSidebar = false, isEmbedded = false, onRefresh }) {
   const listRef = useRef(null);
   const [startY, setStartY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
@@ -17,7 +17,7 @@ export default function LiveFeed({ events, onSelectEvent, onClose, isSidebar = f
   }, [events.length]);
 
   return (
-    <div className={`live-feed ${isSidebar ? 'sidebar' : ''}`}>
+    <div className={`live-feed ${isSidebar ? 'sidebar' : ''} ${isEmbedded ? 'embedded' : ''}`}>
       <div className="feed-header">
         <span className="feed-header-dot" />
         <span className="feed-header-title">Live Feed</span>

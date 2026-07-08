@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { auth, db } from "../config/firebase";
 import { onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
+import { createSessionCookie, clearSessionCookie } from "../utils/api";
 
 const AuthContext = createContext();
 
@@ -22,12 +23,24 @@ export function AuthProvider({ children }) {
         setCurrentUser(user);
         
         // Listen to the user's role from Firestore to handle signup race conditions
-        unsubDoc = onSnapshot(doc(db, "users", user.uid), (userDoc) => {
+        unsubDoc = onSnapshot(doc(db, "users", user.uid), async (userDoc) => {
+          let role = "citizen";
           if (userDoc.exists()) {
-            setUserRole(userDoc.data().role || "citizen");
-          } else {
-            setUserRole("citizen"); // Default fallback until doc is created
+            role = userDoc.data().role || "citizen";
           }
+          setUserRole(role);
+          
+          // Store active role in session storage for this tab
+          sessionStorage.setItem("activeRole", role);
+
+          // Create the session cookie on the backend
+          try {
+            const idToken = await user.getIdToken();
+            await createSessionCookie(idToken, role);
+          } catch (err) {
+            console.error("Failed to create session cookie:", err);
+          }
+
           setLoading(false);
         }, (err) => {
           console.error("Error fetching user role:", err);
@@ -51,8 +64,18 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const logout = () => {
-    return firebaseSignOut(auth);
+  const logout = async () => {
+    try {
+      const currentRole = sessionStorage.getItem("activeRole");
+      if (currentRole) {
+        await clearSessionCookie(currentRole);
+      }
+    } catch (err) {
+      console.error("Error clearing session cookie:", err);
+    } finally {
+      sessionStorage.removeItem("activeRole");
+      return firebaseSignOut(auth);
+    }
   };
 
   const value = {

@@ -39,7 +39,7 @@ export default function AuthModal({ onClose, forceOpen = false }) {
     setLoading(true);
 
     try {
-      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+      await setPersistence(auth, browserSessionPersistence);
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
@@ -59,7 +59,7 @@ export default function AuthModal({ onClose, forceOpen = false }) {
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+      await setPersistence(auth, browserSessionPersistence);
       const userCred = await signInWithPopup(auth, provider);
       await createRoleInFirestore(userCred.user, selectedRole);
       onClose();
@@ -119,17 +119,7 @@ export default function AuthModal({ onClose, forceOpen = false }) {
             />
           </div>
           
-          <div className="auth-remember-group" style={{ display: 'flex', alignItems: 'center', marginBottom: '16px', fontSize: '14px', color: '#94a3b8' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-              <input 
-                type="checkbox" 
-                checked={rememberMe} 
-                onChange={(e) => setRememberMe(e.target.checked)} 
-                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#3b82f6' }}
-              />
-              Remember this device
-            </label>
-          </div>
+          <div className="auth-remember-group" style={{ display: 'none' }}></div>
 
           {!isLogin && (
             <div className="auth-role-group">

@@ -143,172 +143,157 @@ export async function fetchMunicipalBrief() {
   return res.json();
 }
 
-// --- Municipality CRUD APIs (require auth token) ---
-
-async function authHeaders(user) {
-  if (!user) throw new Error("Not authenticated");
-  const token = await user.getIdToken();
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
-  };
+// --- Auth Helpers ---
+export async function createSessionCookie(idToken, role) {
+  const res = await fetch(`${API_BASE}/auth/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken, role }),
+    credentials: 'include'
+  });
+  if (!res.ok) throw new Error("Failed to create session");
+  return res.json();
 }
 
+export async function clearSessionCookie(role) {
+  const res = await fetch(`${API_BASE}/auth/logout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+    credentials: 'include'
+  });
+  return res.json();
+}
+
+async function authFetch(url, options = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Active-Role': sessionStorage.getItem('activeRole') || 'citizen',
+    ...(options.headers || {})
+  };
+  const res = await fetch(url, { ...options, headers, credentials: 'include' });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `HTTP error ${res.status}`);
+  }
+  return res;
+}
+
+// --- Municipality CRUD APIs (require auth session) ---
+
 export async function fetchMunicipalDashboard(user) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/municipality/dashboard`, { headers });
-  if (!res.ok) throw new Error((await res.json()).error);
+  const res = await authFetch(`${API_BASE}/municipality/dashboard`);
   return res.json();
 }
 
 export async function fetchMunicipalEvents(user, filters = {}) {
-  const headers = await authHeaders(user);
   const params = new URLSearchParams();
   if (filters.status) params.set('status', filters.status);
   if (filters.severity) params.set('severity', filters.severity);
   if (filters.type) params.set('type', filters.type);
   const qs = params.toString() ? `?${params.toString()}` : '';
-  const res = await fetch(`${API_BASE}/municipality/events${qs}`, { headers });
-  if (!res.ok) throw new Error((await res.json()).error);
+  const res = await authFetch(`${API_BASE}/municipality/events${qs}`);
   return res.json();
 }
 
 export async function updateEventStatus(user, eventId, status) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/municipality/events/${eventId}/status`, {
+  const res = await authFetch(`${API_BASE}/municipality/events/${eventId}/status`, {
     method: 'PATCH',
-    headers,
     body: JSON.stringify({ status }),
   });
-  if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
 
 export async function assignEventWorker(user, eventId, workerUid, teamId) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/municipality/events/${eventId}/assign`, {
+  const res = await authFetch(`${API_BASE}/municipality/events/${eventId}/assign`, {
     method: 'PATCH',
-    headers,
     body: JSON.stringify({ workerUid, teamId }),
   });
-  if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
 
 export async function deleteEventById(user, eventId) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/municipality/events/${eventId}`, {
+  const res = await authFetch(`${API_BASE}/municipality/events/${eventId}`, {
     method: 'DELETE',
-    headers,
   });
-  if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
 
 export async function fetchWorkers(user) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/municipality/workers`, { headers });
-  if (!res.ok) throw new Error((await res.json()).error);
+  const res = await authFetch(`${API_BASE}/municipality/workers`);
   return res.json();
 }
 
 export async function deleteWorkerTeam(user, workerUid, teamId) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/municipality/workers/${workerUid}/teams/${teamId}`, {
+  const res = await authFetch(`${API_BASE}/municipality/workers/${workerUid}/teams/${teamId}`, {
     method: 'DELETE',
-    headers,
   });
-  if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
 
-// --- Citizen APIs (require auth token + citizen role) ---
+// --- Citizen APIs (require auth session + citizen role) ---
 
 export async function fetchCitizenEvents(user) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/citizen/events`, { headers });
-  if (!res.ok) throw new Error((await res.json()).error);
+  const res = await authFetch(`${API_BASE}/citizen/events`);
   return res.json();
 }
 
 export async function deleteCitizenEvent(user, eventId) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/citizen/events/${eventId}`, {
+  const res = await authFetch(`${API_BASE}/citizen/events/${eventId}`, {
     method: 'DELETE',
-    headers,
   });
-  if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
 
 export async function submitEventFeedback(user, eventId, rating) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/citizen/events/${eventId}/feedback`, {
+  const res = await authFetch(`${API_BASE}/citizen/events/${eventId}/feedback`, {
     method: 'POST',
-    headers,
     body: JSON.stringify({ rating }),
   });
-  if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
 
-// --- Worker APIs (require auth token + worker role) ---
+// --- Worker APIs (require auth session + worker role) ---
 
 export async function fetchWorkerAssignments(user) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/worker/assignments`, { headers });
-  if (!res.ok) throw new Error((await res.json()).error);
+  const res = await authFetch(`${API_BASE}/worker/assignments`);
   return res.json();
 }
 
 export async function fetchWorkerProfile(user) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/worker/profile?_t=${Date.now()}`, { headers });
-  if (!res.ok) throw new Error((await res.json()).error);
+  const res = await authFetch(`${API_BASE}/worker/profile?_t=${Date.now()}`);
   return res.json();
 }
 
 export async function updateWorkerProfile(user, data) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/worker/profile`, {
+  const res = await authFetch(`${API_BASE}/worker/profile`, {
     method: 'PATCH',
-    headers,
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
 
 export async function updateWorkerManualStatus(user, workerUid, status) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/municipality/workers/${workerUid}/status`, {
+  const res = await authFetch(`${API_BASE}/municipality/workers/${workerUid}/status`, {
     method: 'PATCH',
-    headers,
     body: JSON.stringify({ status }),
   });
-  if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
 
 export async function updateWorkerEventStatus(user, eventId, status) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/worker/events/${eventId}/status`, {
+  const res = await authFetch(`${API_BASE}/worker/events/${eventId}/status`, {
     method: 'PATCH',
-    headers,
     body: JSON.stringify({ status }),
   });
-  if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
 
 export async function verifyWorkerEvent(user, eventId, imageDataUrl, note) {
-  const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/worker/events/${eventId}/verify`, {
+  const res = await authFetch(`${API_BASE}/worker/events/${eventId}/verify`, {
     method: 'POST',
-    headers,
     body: JSON.stringify({ imageDataUrl, note }),
   });
-  if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
 

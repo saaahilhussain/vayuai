@@ -478,6 +478,8 @@ export default function LiveMap({
       setMapCenter({ lat: selectedEvent.lat, lng: selectedEvent.lng });
       setMapZoom(14);
       setSelectedMarker(selectedEvent);
+    } else if (selectedEvent === null) {
+      setSelectedMarker(null);
     }
   }, [selectedEvent]);
 

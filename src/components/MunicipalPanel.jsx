@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import "./MunicipalPanel.css";
 import HotspotPanel from "./HotspotPanel";
 import PredictionPanel from "./PredictionPanel";
+import LiveFeed from "./LiveFeed";
 import { useAuth } from "../context/AuthContext";
 import {
   fetchMunicipalBrief,
@@ -82,8 +83,7 @@ export default function MunicipalPanel({
 
   const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, manage, brief, map
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
-  // AI Brief state
+  const [feedOpen, setFeedOpen] = useState(false);
   const [actions, setActions] = useState([]);
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState(null);
@@ -99,6 +99,7 @@ export default function MunicipalPanel({
   const [events, setEvents] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [wardFilter, setWardFilter] = useState("");
   const [teamStatusFilter, setTeamStatusFilter] = useState("");
   const [briefStatusFilter, setBriefStatusFilter] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -106,6 +107,21 @@ export default function MunicipalPanel({
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
   const [expandedEventId, setExpandedEventId] = useState(null);
+
+  const handleNavClick = (tabName) => {
+    if (tabName !== activeTab) {
+      setStatusFilter("");
+      setWardFilter("");
+      setTeamStatusFilter("");
+      setBriefFilter("");
+      setBriefStatusFilter("");
+      setExpandedEventId(null);
+      if (onSelectEvent) {
+        onSelectEvent(null);
+      }
+    }
+    setActiveTab(tabName);
+  };
 
   // Load AI Brief
   const loadBrief = useCallback(() => {
@@ -359,7 +375,9 @@ export default function MunicipalPanel({
   );
 
   const renderManageTab = () => {
+    const uniqueWards = Array.from(new Set(events.map(e => e.locationName).filter(Boolean)));
     const visibleEvents = events.filter(e => {
+      if (wardFilter && e.locationName !== wardFilter) return false;
       if (statusFilter) return e.status === statusFilter;
       return e.status !== "spam";
     });
@@ -368,7 +386,23 @@ export default function MunicipalPanel({
     <div className="mdl-tab-content">
       <div className="mdl-page-header">
         <h2 className="mdl-page-title">Manage Reports</h2>
-        <div className="mp-filters">
+        <div className="mp-filters" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div className="mp-ward-search" style={{ position: 'relative' }}>
+              <input
+                type="text"
+                list="ward-options"
+                placeholder="Search Ward..."
+                className="mp-select mp-status-filter"
+                value={wardFilter}
+                onChange={(e) => setWardFilter(e.target.value)}
+                style={{ width: '200px' }}
+              />
+              <datalist id="ward-options">
+                {uniqueWards.map(ward => (
+                  <option key={ward} value={ward} />
+                ))}
+              </datalist>
+            </div>
             <select
               className="mp-select mp-status-filter"
               value={statusFilter}
@@ -798,6 +832,10 @@ export default function MunicipalPanel({
       <HotspotPanel
         hotspots={hotspots}
         onClose={() => { }}
+        onTakeAction={(locationName) => {
+          setWardFilter(locationName || "");
+          setActiveTab("manage");
+        }}
         onSelectHotspot={(hs) => {
           onSelectEvent({
             lat: hs.lat,
@@ -821,6 +859,10 @@ export default function MunicipalPanel({
       <PredictionPanel
         predictionData={predictionData}
         onClose={() => { }}
+        onTakeAction={(locationName) => {
+          setWardFilter(locationName || "");
+          setActiveTab("manage");
+        }}
         onSelectLocation={(loc) => {
           onSelectEvent({
             lat: loc.lat,
@@ -1204,29 +1246,36 @@ export default function MunicipalPanel({
 
         <nav className="mdl-nav">
           <button
+            className={`mdl-nav-item ${activeTab === "feed" ? "active" : ""}`}
+            onClick={() => handleNavClick("feed")}
+          >
+            <span className="mdl-nav-icon">📡</span>
+            Live Feed
+          </button>
+          <button
             className={`mdl-nav-item ${activeTab === "dashboard" ? "active" : ""}`}
-            onClick={() => setActiveTab("dashboard")}
+            onClick={() => handleNavClick("dashboard")}
           >
             <span className="mdl-nav-icon">📊</span>
             Dashboard
           </button>
           <button
             className={`mdl-nav-item ${activeTab === "manage" ? "active" : ""}`}
-            onClick={() => setActiveTab("manage")}
+            onClick={() => handleNavClick("manage")}
           >
             <span className="mdl-nav-icon">📋</span>
             Manage Reports
           </button>
           <button
             className={`mdl-nav-item ${activeTab === "teams" ? "active" : ""}`}
-            onClick={() => setActiveTab("teams")}
+            onClick={() => handleNavClick("teams")}
           >
             <span className="mdl-nav-icon">👥</span>
             Teams
           </button>
           <button
             className={`mdl-nav-item ${activeTab === "brief" ? "active" : ""}`}
-            onClick={() => setActiveTab("brief")}
+            onClick={() => handleNavClick("brief")}
           >
             <span className="mdl-nav-icon">🤖</span>
             AI Action Brief
@@ -1241,14 +1290,14 @@ export default function MunicipalPanel({
 
           <button
             className={`mdl-nav-item ${activeTab === "hotspots" ? "active" : ""}`}
-            onClick={() => setActiveTab("hotspots")}
+            onClick={() => handleNavClick("hotspots")}
           >
             <span className="mdl-nav-icon">🎯</span>
             Pollution Hotspots
           </button>
           <button
             className={`mdl-nav-item ${activeTab === "forecast" ? "active" : ""}`}
-            onClick={() => setActiveTab("forecast")}
+            onClick={() => handleNavClick("forecast")}
           >
             <span className="mdl-nav-icon">🔮</span>
             AQI Forecast
@@ -1263,7 +1312,7 @@ export default function MunicipalPanel({
 
           <button
             className={`mdl-nav-item ${activeTab === "map" ? "active" : ""}`}
-            onClick={() => setActiveTab("map")}
+            onClick={() => handleNavClick("map")}
           >
             <span className="mdl-nav-icon">🗺️</span>
             Live Map
@@ -1378,6 +1427,16 @@ export default function MunicipalPanel({
         {activeTab === "brief" && renderAIBriefTab()}
         {activeTab === "hotspots" && renderHotspotsTab()}
         {activeTab === "forecast" && renderForecastTab()}
+        {activeTab === "feed" && (
+          <LiveFeed
+            events={events}
+            onSelectEvent={() => {}}
+            onClose={() => setActiveTab("dashboard")}
+            isSidebar={false}
+            isEmbedded={true}
+            onRefresh={loadManagementData}
+          />
+        )}
       </div>
     </div>
   );
