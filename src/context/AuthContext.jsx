@@ -13,6 +13,7 @@ export function useAuth() {
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState(null); // 'citizen' | 'worker' | 'municipality'
+  const [userMunicipality, setUserMunicipality] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,10 +26,14 @@ export function AuthProvider({ children }) {
         // Listen to the user's role from Firestore to handle signup race conditions
         unsubDoc = onSnapshot(doc(db, "users", user.uid), async (userDoc) => {
           let role = "citizen";
+          let municipality = null;
           if (userDoc.exists()) {
-            role = userDoc.data().role || "citizen";
+            const data = userDoc.data();
+            role = data.role || "citizen";
+            municipality = data.municipalityName || null;
           }
           setUserRole(role);
+          setUserMunicipality(municipality);
           
           // Store active role in session storage for this tab
           sessionStorage.setItem("activeRole", role);
@@ -81,6 +86,7 @@ export function AuthProvider({ children }) {
   const value = {
     currentUser,
     userRole,
+    userMunicipality,
     logout,
   };
 

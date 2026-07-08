@@ -26,7 +26,7 @@ export default function WorkerPanel({
   sensorsActive,
   setSensorsActive
 }) {
-  const { currentUser } = useAuth();
+  const { currentUser, userMunicipality } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -666,7 +666,14 @@ export default function WorkerPanel({
         <div className={`mdl-sidebar ${isSidebarOpen ? "" : "collapsed"}`}>
           <div className="mdl-brand">
             <span className="mdl-logo">🌬️</span>
-            <h2>VayuAI Field</h2>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <h2 style={{ margin: 0 }}>VayuAI Field</h2>
+              {userMunicipality && !(!isSidebarOpen) && (
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                  {userMunicipality}
+                </span>
+              )}
+            </div>
           </div>
 
           <nav className="mdl-nav">
@@ -717,7 +724,7 @@ export default function WorkerPanel({
               My Local Area
             </button>
 
-            <div style={{ margin: "16px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}></div>
+            <div style={{ margin: "0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}></div>
 
             <button
               className={`mdl-nav-item ${activeTab === "map" ? "active" : ""}`}

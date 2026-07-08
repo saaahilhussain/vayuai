@@ -17,6 +17,7 @@ export default function AuthModal({ onClose, forceOpen = false }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [selectedRole, setSelectedRole] = useState("citizen");
+  const [municipalityName, setMunicipalityName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -25,11 +26,15 @@ export default function AuthModal({ onClose, forceOpen = false }) {
     const userRef = doc(db, "users", user.uid);
     const userDoc = await getDoc(userRef);
     if (!userDoc.exists()) {
-      await setDoc(userRef, {
+      const data = {
         email: user.email,
         role: defaultRole,
         createdAt: new Date().toISOString(),
-      });
+      };
+      if (defaultRole === "municipality" || defaultRole === "worker") {
+        data.municipalityName = municipalityName;
+      }
+      await setDoc(userRef, data);
     }
   };
 
@@ -155,6 +160,29 @@ export default function AuthModal({ onClose, forceOpen = false }) {
               </div>
             </div>
           )}
+
+          {!isLogin && (selectedRole === "municipality" || selectedRole === "worker") && (
+            <div className="auth-input-group" style={{ marginTop: '15px' }}>
+              <span className="auth-input-icon">🏢</span>
+              <input
+                type="text"
+                placeholder="Municipal Corporation Name"
+                value={municipalityName}
+                onChange={(e) => setMunicipalityName(e.target.value)}
+                required
+                className="auth-input"
+                list="municipal-suggestions"
+              />
+              <datalist id="municipal-suggestions">
+                <option value="Guwahati Municipal Corporation" />
+                <option value="Dibrugarh Municipal Corporation" />
+                <option value="Silchar Municipal Board" />
+                <option value="Jorhat Municipal Board" />
+                <option value="Tezpur Municipal Board" />
+              </datalist>
+            </div>
+          )}
+
           <button type="submit" disabled={loading} className="auth-submit-btn">
             {loading && <span className="auth-spinner" />}
             {loading ? "Processing..." : isLogin ? "Sign In" : "Create Account"}

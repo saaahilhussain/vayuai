@@ -80,7 +80,7 @@ export default function MunicipalPanel({
   setHeatmapSelectedStates,
   globalEvents = [],
 }) {
-  const { currentUser, userRole } = useAuth();
+  const { currentUser, userRole, userMunicipality } = useAuth();
   const isMunicipal = userRole === "municipality";
 
   const [activeTab, setActiveTab] = useState("dashboard"); // dashboard, manage, brief, map
@@ -111,6 +111,7 @@ export default function MunicipalPanel({
         : w.manualStatus === "busy" || events.some(
               (e) =>
                 e.assignedTo === w.uid &&
+                e.assignedTeamId === w.teamId &&
                 ["assigned", "worker_en_route", "reached", "in_progress"].includes(e.status)
             )
           ? "busy"
@@ -227,11 +228,11 @@ export default function MunicipalPanel({
       if (String(eventId).startsWith("action_")) {
         const actionIdx = parseInt(String(eventId).split("_")[1]);
         handleAction(actionIdx, "in_progress", workerUid);
-        await updateWorkerManualStatus(currentUser, workerUid, "busy");
+        await updateWorkerManualStatus(currentUser, workerUid, "busy", teamId);
       } else {
         await assignEventWorker(currentUser, eventId, workerUid, teamId);
         // Clear manual idle status since they are now being assigned work
-        await updateWorkerManualStatus(currentUser, workerUid, "clear");
+        await updateWorkerManualStatus(currentUser, workerUid, "clear", teamId);
       }
       await loadManagementData();
     } catch (err) {
@@ -242,19 +243,19 @@ export default function MunicipalPanel({
     }
   };
 
-  const handleMarkIdle = async (workerUid) => {
-    setActionLoading(workerUid); // reuse for local spinner
+  const handleMarkIdle = async (workerUid, teamId) => {
+    setActionLoading(`${workerUid}_${teamId}`);
     try {
-      const activeEvents = events.filter(e => e.assignedTo === workerUid && !["resolved", "cleanup_done"].includes(e.status));
+      const activeEvents = events.filter(e => e.assignedTo === workerUid && e.assignedTeamId === teamId && !["resolved", "cleanup_done"].includes(e.status));
       for (const event of activeEvents) {
         await updateEventStatus(currentUser, event.id, "resolved");
       }
       Object.entries(actionStates).forEach(([idx, stateObj]) => {
-        if (stateObj && typeof stateObj === "object" && stateObj.status === "in_progress" && stateObj.workerUid === workerUid) {
+        if (stateObj && typeof stateObj === "object" && stateObj.status === "in_progress" && stateObj.workerUid === workerUid && stateObj.teamId === teamId) {
           handleAction(parseInt(idx), "resolved");
         }
       });
-      await updateWorkerManualStatus(currentUser, workerUid, "idle");
+      await updateWorkerManualStatus(currentUser, workerUid, "idle", teamId);
       await loadManagementData();
     } catch (err) {
       alert(`Failed: ${err.message}`);
@@ -276,12 +277,12 @@ export default function MunicipalPanel({
     }
   };
 
-  const handleForceResolve = async (eventId, workerUid) => {
+  const handleForceResolve = async (eventId, workerUid, teamId) => {
     setActionLoading(eventId);
     try {
       await updateEventStatus(currentUser, eventId, "resolved");
       if (workerUid) {
-        await updateWorkerManualStatus(currentUser, workerUid, "idle");
+        await updateWorkerManualStatus(currentUser, workerUid, "idle", teamId);
       }
       await loadManagementData();
     } catch (err) {
@@ -574,9 +575,13 @@ export default function MunicipalPanel({
                         <button
                           className="mp-btn mp-btn-resolve"
                           disabled={isActing}
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            handleForceResolve(event.id, event.assignedTo);
+                            try {
+                              await handleForceResolve(event.id, event.assignedTo, event.assignedTeamId);
+                            } catch (err) {
+                              alert(`Failed: ${err.message}`);
+                            }
                           }}
                           style={{
                             padding: "10px 16px",
@@ -756,6 +761,7 @@ export default function MunicipalPanel({
               const stateObj = actionStates[idx];
               const state = stateObj ? (typeof stateObj === "string" ? stateObj : stateObj.status) : "open";
               const workerUid = stateObj && typeof stateObj === "object" ? stateObj.workerUid : null;
+              const teamId = stateObj && typeof stateObj === "object" ? stateObj.teamId : null;
               if (briefStatusFilter && state !== briefStatusFilter) return null;
               if (!briefStatusFilter && state === "dismissed") return null;
               if (briefFilter && action.priority !== briefFilter) return null;
@@ -788,7 +794,7 @@ export default function MunicipalPanel({
                             try {
                               handleAction(idx, "resolved");
                               if (workerUid) {
-                                await updateWorkerManualStatus(currentUser, workerUid, "idle");
+                                await updateWorkerManualStatus(currentUser, workerUid, "idle", teamId);
                                 await loadManagementData();
                               }
                             } finally {
@@ -1022,19 +1028,22 @@ export default function MunicipalPanel({
                     style={{ justifyContent: "center" }}
                   >
                     <button
-                      onClick={() => handleMarkIdle(worker.uid)}
-                      disabled={actionLoading === worker.uid}
+                      onClick={() => handleMarkIdle(worker.uid, worker.teamId)}
+                      disabled={actionLoading === `${worker.uid}_${worker.teamId}`}
                       style={{
                         background: "transparent",
                         border: "1px solid #3b82f6",
                         color: "#3b82f6",
-                        padding: "4px 8px",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "0.75rem",
+                        padding: "6px 12px",
+                        borderRadius: "6px",
+                        fontSize: "12px",
+                        fontWeight: 600,
+                        cursor: actionLoading === `${worker.uid}_${worker.teamId}` ? "not-allowed" : "pointer",
+                        transition: "all 0.2s",
+                        flex: 1,
                       }}
                     >
-                      {actionLoading === worker.uid ? "..." : "Mark Idle"}
+                      {actionLoading === `${worker.uid}_${worker.teamId}` ? "Processing..." : "Mark Idle"}
                     </button>
                   </div>
                 )}
@@ -1259,7 +1268,14 @@ export default function MunicipalPanel({
       <div className={`mdl-sidebar ${isSidebarOpen ? "" : "collapsed"}`}>
         <div className="mdl-brand">
           <span className="mdl-logo">🌬️</span>
-          <h2>VayuAI Command</h2>
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <h2 style={{ margin: 0 }}>VayuAI Command</h2>
+            {isMunicipal && userMunicipality && !(!isSidebarOpen) && (
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: '2px' }}>
+                {userMunicipality}
+              </span>
+            )}
+          </div>
         </div>
 
         <nav className="mdl-nav">
@@ -1301,7 +1317,7 @@ export default function MunicipalPanel({
 
           <div
             style={{
-              margin: "16px 0",
+              margin: "0",
               borderBottom: "1px solid rgba(255,255,255,0.05)",
             }}
           ></div>
@@ -1323,7 +1339,7 @@ export default function MunicipalPanel({
 
           <div
             style={{
-              margin: "16px 0",
+              margin: "0",
               borderBottom: "1px solid rgba(255,255,255,0.05)",
             }}
           ></div>

@@ -273,10 +273,10 @@ export async function updateWorkerProfile(user, data) {
   return res.json();
 }
 
-export async function updateWorkerManualStatus(user, workerUid, status) {
+export async function updateWorkerManualStatus(user, workerUid, status, teamId) {
   const res = await authFetch(`${API_BASE}/municipality/workers/${workerUid}/status`, {
     method: 'PATCH',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, teamId }),
   });
   return res.json();
 }

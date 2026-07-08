@@ -49,6 +49,7 @@ function AddTweetModalContent({
   const [city, setCity] = useState("");
   const [pincode, setPincode] = useState("");
   const [state, setStateName] = useState("");
+  const [municipalCorp, setMunicipalCorp] = useState("");
   const [wasteCategories, setWasteCategories] = useState([]);
   const [reportDate, setReportDate] = useState(""); // Empty by default
   const [publishConsent, setPublishConsent] = useState(false);
@@ -685,7 +686,8 @@ function AddTweetModalContent({
         street: location,
         city: city,
         pincode: pincode,
-        state: state
+        state: state,
+        municipalCorp: municipalCorp
       };
 
       response = await postCustomTweet(
@@ -830,6 +832,24 @@ function AddTweetModalContent({
               <option value="Manipur" />
               <option value="Mizoram" />
               <option value="Tripura" />
+            </datalist>
+
+            <input 
+              type="text" 
+              value={municipalCorp} 
+              onChange={e => setMunicipalCorp(e.target.value)} 
+              placeholder="Municipal Corp" 
+              disabled={status === "loading"} 
+              style={{ flex: '1 1 140px', boxSizing: 'border-box' }} 
+              list="municipal-suggestions"
+              required
+            />
+            <datalist id="municipal-suggestions">
+              <option value="Guwahati Municipal Corporation" />
+              <option value="Dibrugarh Municipal Corporation" />
+              <option value="Silchar Municipal Board" />
+              <option value="Jorhat Municipal Board" />
+              <option value="Tezpur Municipal Board" />
             </datalist>
           </div>
 

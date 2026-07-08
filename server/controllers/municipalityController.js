@@ -6,9 +6,23 @@ const USERS_COLLECTION = "users";
 /**
  * GET /api/municipality/events — List all events with status filters
  */
-export function listEvents(req, res) {
+export async function listEvents(req, res) {
   const { status, severity, type } = req.query;
   let events = store.getAll();
+
+  try {
+    const userDoc = await adminDb.collection("users").doc(req.user.uid).get();
+    if (userDoc.exists) {
+      const municipalityName = userDoc.data().municipalityName;
+      if (municipalityName) {
+        events = events.filter(e => 
+          !e.detailedLocation?.municipalCorp || e.detailedLocation.municipalCorp === municipalityName
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Error fetching user municipality:", error);
+  }
 
   if (status) {
     events = events.filter((e) => (e.status || "open") === status);
@@ -149,7 +163,7 @@ export async function listWorkers(req, res) {
           govtId: team.govtId || "",
           mobile: team.mobile || "",
           officeAddress: team.officeAddress || "",
-          manualStatus: data.manualStatus || null,
+          manualStatus: team.manualStatus || data.manualStatus || null,
         });
       });
     });
@@ -166,15 +180,36 @@ export async function listWorkers(req, res) {
  */
 export async function updateWorkerStatus(req, res) {
   const { uid } = req.params;
-  const { status } = req.body;
+  const { status, teamId } = req.body;
 
   try {
-    // We only support marking as 'idle' for now, or clearing it.
-    // If status is 'clear', we delete the field.
-    if (status === 'clear') {
-      await adminDb.collection(USERS_COLLECTION).doc(uid).set({ manualStatus: null }, { merge: true });
-    } else {
-      await adminDb.collection(USERS_COLLECTION).doc(uid).set({ manualStatus: status }, { merge: true });
+    const userRef = adminDb.collection(USERS_COLLECTION).doc(uid);
+    const userDoc = await userRef.get();
+
+    if (userDoc.exists) {
+      const data = userDoc.data();
+      if (data.teams && Array.isArray(data.teams)) {
+        if (teamId) {
+          const updatedTeams = data.teams.map(team => {
+            if (team.id === teamId) {
+              return { ...team, manualStatus: status === 'clear' ? null : status };
+            }
+            return team;
+          });
+          await userRef.update({ teams: updatedTeams });
+        } else {
+           const updatedTeams = data.teams.map(team => {
+             return { ...team, manualStatus: status === 'clear' ? null : status };
+           });
+           await userRef.update({ teams: updatedTeams });
+        }
+      } else {
+        if (status === 'clear') {
+          await userRef.set({ manualStatus: null }, { merge: true });
+        } else {
+          await userRef.set({ manualStatus: status }, { merge: true });
+        }
+      }
     }
     res.json({ success: true, status });
   } catch (err) {
