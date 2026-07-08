@@ -36,6 +36,7 @@ export function listEvents(req, res) {
       lng: e.lng,
       timestamp: e.timestamp,
       assignedTo: e.assignedTo || null,
+      assignedTeamId: e.assignedTeamId || null,
       assignedAt: e.assignedAt || null,
       resolvedAt: e.resolvedAt || null,
       resolutionProofUrl: e.resolutionProofUrl || null,
@@ -78,13 +79,13 @@ export async function updateEventStatus(req, res) {
  */
 export async function assignWorker(req, res) {
   const { id } = req.params;
-  const { workerUid } = req.body;
+  const { workerUid, teamId } = req.body;
 
   if (!workerUid) {
     return res.status(400).json({ error: "workerUid is required" });
   }
 
-  const event = await store.assignWorker(id, workerUid);
+  const event = await store.assignWorker(id, workerUid, teamId);
   if (!event) {
     return res.status(404).json({ error: "Event not found" });
   }
@@ -116,19 +117,42 @@ export async function listWorkers(req, res) {
       .where("role", "==", "worker")
       .get();
 
-    const workers = snapshot.docs.map((doc) => ({
-      uid: doc.id,
-      email: doc.data().email,
-      name: doc.data().teamName || doc.data().name || doc.data().email, // Fallback for UI that still expects "name"
-      teamName: doc.data().teamName || doc.data().name || "",
-      workerName: doc.data().workerName || "",
-      gender: doc.data().gender || "",
-      teamStrength: doc.data().teamStrength || 1,
-      govtId: doc.data().govtId || "",
-      mobile: doc.data().mobile || "",
-      officeAddress: doc.data().officeAddress || "",
-      manualStatus: doc.data().manualStatus || null,
-    }));
+    const workers = [];
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      let userTeams = data.teams;
+      
+      if (userTeams === undefined) {
+        userTeams = [{
+          id: "legacy",
+          teamName: data.teamName || data.name || "",
+          workerName: data.workerName || "",
+          gender: data.gender || "",
+          teamStrength: data.teamStrength || 1,
+          govtId: data.govtId || "",
+          mobile: data.mobile || "",
+          officeAddress: data.officeAddress || ""
+        }];
+      }
+
+      userTeams.forEach((team) => {
+        workers.push({
+          uniqueId: `${doc.id}_${team.id}`,
+          uid: doc.id,
+          teamId: team.id,
+          email: data.email,
+          name: team.teamName || team.name || data.email,
+          teamName: team.teamName || team.name || "",
+          workerName: team.workerName || "",
+          gender: team.gender || "",
+          teamStrength: team.teamStrength || 1,
+          govtId: team.govtId || "",
+          mobile: team.mobile || "",
+          officeAddress: team.officeAddress || "",
+          manualStatus: data.manualStatus || null,
+        });
+      });
+    });
 
     res.json({ workers });
   } catch (err) {
@@ -221,3 +245,24 @@ export function getDashboard(req, res) {
     ).length,
   });
 }
+
+/**
+ * DELETE /api/municipality/workers/:uid/teams/:teamId
+ */
+export async function deleteWorkerTeam(req, res) {
+  const { uid, teamId } = req.params;
+  try {
+    const doc = await adminDb.collection(USERS_COLLECTION).doc(uid).get();
+    if (!doc.exists) return res.status(404).json({ error: "Worker not found" });
+    const data = doc.data();
+    if (!data.teams) return res.status(404).json({ error: "No teams found" });
+
+    const updatedTeams = data.teams.filter(t => t.id !== teamId);
+    await adminDb.collection(USERS_COLLECTION).doc(uid).update({ teams: updatedTeams });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error deleting worker team:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+

@@ -12,6 +12,7 @@ import {
   deleteEventById,
   fetchWorkers,
   updateWorkerManualStatus,
+  deleteWorkerTeam,
   POLLUTION_TYPES,
   timeAgo,
 } from "../utils/api";
@@ -100,6 +101,7 @@ export default function MunicipalPanel({
   const [statusFilter, setStatusFilter] = useState("");
   const [teamStatusFilter, setTeamStatusFilter] = useState("");
   const [briefStatusFilter, setBriefStatusFilter] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
@@ -143,11 +145,12 @@ export default function MunicipalPanel({
             : w.manualStatus === "busy" || eventsData.events.some(
                   (e) =>
                     e.assignedTo === w.uid &&
+                    e.assignedTeamId === w.teamId &&
                     !["resolved", "cleanup_done"].includes(e.status),
                 )
               ? "busy"
               : "idle",
-        assignedCount: eventsData.events.filter((e) => e.assignedTo === w.uid)
+        assignedCount: eventsData.events.filter((e) => e.assignedTo === w.uid && e.assignedTeamId === w.teamId)
           .length,
       }));
       setWorkers(enrichedWorkers);
@@ -184,7 +187,7 @@ export default function MunicipalPanel({
     }
   };
 
-  const handleAssign = async (eventId, workerUid) => {
+  const handleAssign = async (eventId, workerUid, teamId) => {
     setActionLoading(eventId);
     try {
       if (String(eventId).startsWith("action_")) {
@@ -192,7 +195,7 @@ export default function MunicipalPanel({
         handleAction(actionIdx, "in_progress", workerUid);
         await updateWorkerManualStatus(currentUser, workerUid, "busy");
       } else {
-        await assignEventWorker(currentUser, eventId, workerUid);
+        await assignEventWorker(currentUser, eventId, workerUid, teamId);
         // Clear manual idle status since they are now being assigned work
         await updateWorkerManualStatus(currentUser, workerUid, "clear");
       }
@@ -221,6 +224,19 @@ export default function MunicipalPanel({
       await loadManagementData();
     } catch (err) {
       alert(`Failed: ${err.message}`);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleDeleteTeam = async (workerUid, teamId) => {
+    setActionLoading(`${workerUid}_${teamId}`);
+    try {
+      await deleteWorkerTeam(currentUser, workerUid, teamId);
+      setWorkers(prev => prev.filter(w => !(w.uid === workerUid && w.teamId === teamId)));
+      setConfirmDeleteId(null);
+    } catch (err) {
+      alert("Failed to delete team: " + err.message);
     } finally {
       setActionLoading(null);
     }
@@ -880,9 +896,25 @@ export default function MunicipalPanel({
         ) : (
           visibleWorkers.map((worker) => (
             <div
-              key={worker.uid}
+              key={worker.uniqueId || worker.uid}
               className={`mp-team-card ${worker.status === "idle" ? "team-idle" : "team-busy"}`}
+              style={{ position: 'relative', overflow: 'hidden' }}
             >
+              {confirmDeleteId === worker.uniqueId && (
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#f8fafc', fontSize: '1.1rem' }}>Delete team {worker.teamName || worker.name}?</h4>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button
+                      className="mp-btn mp-btn-danger"
+                      onClick={() => handleDeleteTeam(worker.uid, worker.teamId)}
+                      disabled={actionLoading === `${worker.uid}_${worker.teamId}`}
+                    >
+                      {actionLoading === `${worker.uid}_${worker.teamId}` ? '...' : 'Yes, Delete'}
+                    </button>
+                    <button className="mp-btn mp-btn-secondary" onClick={() => setConfirmDeleteId(null)}>Cancel</button>
+                  </div>
+                </div>
+              )}
               <div className="mp-team-header">
                 <div className="mp-team-avatar">
                   {(worker.teamName || worker.name).charAt(0).toUpperCase()}
@@ -891,9 +923,25 @@ export default function MunicipalPanel({
                   <h3>{worker.teamName || worker.name}</h3>
                   <span className="mp-team-email">{worker.email}</span>
                 </div>
-                <span className={`mp-team-status-badge ${worker.status}`}>
-                  {worker.status.toUpperCase()}
-                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                  <span className={`mp-team-status-badge ${worker.status}`}>
+                    {worker.status.toUpperCase()}
+                  </span>
+                  <button
+                    className="mp-btn mp-btn-danger mp-btn-sm"
+                    onClick={() => setConfirmDeleteId(worker.uniqueId)}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '0.85rem',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#fca5a5'
+                    }}
+                    title="Delete Team"
+                  >
+                    🗑️
+                  </button>
+                </div>
               </div>
               <div className="mp-team-stats">
                 <div className="mp-team-stat">
@@ -940,7 +988,8 @@ export default function MunicipalPanel({
                         setPendingAssignment({
                           eventId: activeEventForDispatch.id,
                           workerUid: worker.uid,
-                          workerName: worker.name || "Worker",
+                          teamId: worker.teamId,
+                          workerName: worker.teamName || worker.name || "Worker",
                           eventLocation: activeEventForDispatch.locationName || "Unknown Location",
                         });
                         setActiveEventForDispatch(null);
@@ -1123,6 +1172,7 @@ export default function MunicipalPanel({
                   handleAssign(
                     pendingAssignment.eventId,
                     pendingAssignment.workerUid,
+                    pendingAssignment.teamId
                   )
                 }
                 disabled={actionLoading === pendingAssignment.eventId}

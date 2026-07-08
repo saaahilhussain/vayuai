@@ -8,6 +8,7 @@ import {
   listWorkers,
   updateWorkerStatus,
   getDashboard,
+  deleteWorkerTeam,
 } from "../controllers/municipalityController.js";
 
 const router = express.Router();
@@ -22,5 +23,6 @@ router.patch("/workers/:uid/status", updateWorkerStatus);
 router.patch("/events/:id/status", updateEventStatus);
 router.patch("/events/:id/assign", assignWorker);
 router.delete("/events/:id", deleteEvent);
+router.delete("/workers/:uid/teams/:teamId", deleteWorkerTeam);
 
 export default router;
