@@ -12,7 +12,19 @@ const STATUS_CONFIG = {
   resolved: { label: "Resolved", color: "#22c55e", icon: "✅" },
 };
 
-export default function WorkerPanel({ onClose }) {
+export default function WorkerPanel({ 
+  onClose, 
+  isFullScreen = false, 
+  onLogout, 
+  onSelectEvent, 
+  hotspots: propHotspots,
+  isLive,
+  onToggleLive,
+  heatmapActive,
+  setHeatmapActive,
+  sensorsActive,
+  setSensorsActive
+}) {
   const { currentUser } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +34,7 @@ export default function WorkerPanel({ onClose }) {
   const [activeTab, setActiveTab] = useState("tasks"); // 'tasks' | 'map' | 'profile'
   const [hotspots, setHotspots] = useState([]);
   const [profile, setProfile] = useState(null);
-  const [editingProfile, setEditingProfile] = useState(false);
+  const [editingTeamId, setEditingTeamId] = useState(null);
   const [editTeamName, setEditTeamName] = useState("");
   const [editWorkerName, setEditWorkerName] = useState("");
   const [editGender, setEditGender] = useState("");
@@ -30,6 +42,7 @@ export default function WorkerPanel({ onClose }) {
   const [editGovtId, setEditGovtId] = useState("");
   const [editMobile, setEditMobile] = useState("");
   const [editOfficeAddress, setEditOfficeAddress] = useState("");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const loadAssignments = useCallback(async () => {
     if (!currentUser) return;
@@ -42,19 +55,69 @@ export default function WorkerPanel({ onClose }) {
       ]);
       setEvents(data.events || []);
       setProfile(profileData);
-      setEditTeamName(profileData.teamName || "");
-      setEditWorkerName(profileData.workerName || "");
-      setEditGender(profileData.gender || "");
-      setEditStrength(profileData.teamStrength || 1);
-      setEditGovtId(profileData.govtId || "");
-      setEditMobile(profileData.mobile || "");
-      setEditOfficeAddress(profileData.officeAddress || "");
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   }, [currentUser]);
+
+  const startEditing = (team = null) => {
+    if (team) {
+      setEditingTeamId(team.id);
+      setEditTeamName(team.teamName || "");
+      setEditWorkerName(team.workerName || "");
+      setEditGender(team.gender || "");
+      setEditStrength(team.teamStrength || 1);
+      setEditGovtId(team.govtId || "");
+      setEditMobile(team.mobile || "");
+      setEditOfficeAddress(team.officeAddress || "");
+    } else {
+      setEditingTeamId("new");
+      setEditTeamName("");
+      setEditWorkerName("");
+      setEditGender("");
+      setEditStrength(1);
+      setEditGovtId("");
+      setEditMobile("");
+      setEditOfficeAddress("");
+    }
+  };
+
+  const cancelEditing = () => {
+    setEditingTeamId(null);
+  };
+
+  const saveTeam = async () => {
+    try {
+      const payloadTeam = {
+        id: editingTeamId === "new" ? "team_" + Date.now() : editingTeamId,
+        teamName: editTeamName,
+        workerName: editWorkerName,
+        gender: editGender,
+        teamStrength: editStrength,
+        govtId: editGovtId,
+        mobile: editMobile,
+        officeAddress: editOfficeAddress
+      };
+
+      let currentTeams = profile?.teams || [];
+      let updatedTeams;
+
+      if (editingTeamId === "new") {
+        updatedTeams = [...currentTeams, payloadTeam];
+      } else {
+        updatedTeams = currentTeams.map(t => t.id === editingTeamId ? payloadTeam : t);
+      }
+
+      const updated = await updateWorkerProfile(currentUser, { teams: updatedTeams });
+      setProfile(prev => ({ ...prev, teams: updated.profile.teams }));
+      setEditingTeamId(null);
+      alert("Team saved successfully!");
+    } catch(err) {
+      alert("Failed to save team: " + err.message);
+    }
+  };
 
   useEffect(() => {
     loadAssignments();
@@ -102,6 +165,551 @@ export default function WorkerPanel({ onClose }) {
   const activeCount = events.filter((e) => e.status !== "resolved").length;
   const resolvedCount = events.filter((e) => e.status === "resolved").length;
 
+  // --- Render Tabs ---
+
+  const renderDashboardTab = () => (
+    <div className="mdl-tab-content">
+      <h2 className="mdl-page-title">Dashboard Overview</h2>
+      {loading && !profile && (
+        <div className="mp-loading">
+          <div className="mp-spinner"></div>
+        </div>
+      )}
+      {profile && (
+        <div className="mp-dashboard full-dashboard">
+          <div className="mp-stat-row">
+            <div className="mp-stat mp-stat-critical">
+              <span className="mp-stat-value">{activeCount}</span>
+              <span className="mp-stat-label">Active Tasks</span>
+            </div>
+            <div className="mp-stat mp-stat-resolved">
+              <span className="mp-stat-value">{resolvedCount}</span>
+              <span className="mp-stat-label">Resolved</span>
+            </div>
+            <div className="mp-stat">
+              <span className="mp-stat-value">{events.length}</span>
+              <span className="mp-stat-label">Total Assigned</span>
+            </div>
+            <div className="mp-stat">
+              <span className="mp-stat-value">{profile.teamStrength || 1}</span>
+              <span className="mp-stat-label">Team Strength</span>
+            </div>
+          </div>
+
+          {/* Team Info Summary */}
+          <div className="mp-stat-row" style={{ marginTop: "20px" }}>
+            <div className="mp-stat" style={{ gridColumn: "span 4" }}>
+              <span className="mp-stat-label" style={{ marginBottom: "10px" }}>
+                Team Info
+              </span>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", textAlign: "left", width: "100%" }}>
+                <div>
+                  <span style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase" }}>Team Name</span>
+                  <p style={{ margin: "4px 0 0 0", color: "#e2e8f0" }}>{profile.teamName || "N/A"}</p>
+                </div>
+                <div>
+                  <span style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase" }}>Lead Worker</span>
+                  <p style={{ margin: "4px 0 0 0", color: "#e2e8f0" }}>{profile.workerName || "N/A"}</p>
+                </div>
+                <div>
+                  <span style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase" }}>Email</span>
+                  <p style={{ margin: "4px 0 0 0", color: "#e2e8f0" }}>{profile.email || "N/A"}</p>
+                </div>
+                <div>
+                  <span style={{ color: "#64748b", fontSize: "11px", textTransform: "uppercase" }}>Mobile</span>
+                  <p style={{ margin: "4px 0 0 0", color: "#e2e8f0" }}>{profile.mobile || "N/A"}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderTasksTab = () => {
+    return (
+      <div className="mdl-tab-content">
+        <div className="mdl-page-header">
+          <h2 className="mdl-page-title">My Assignments</h2>
+          <div className="mp-filters">
+            <select
+              className="mp-select mp-status-filter"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            >
+              <option value="active">🔴 Active ({activeCount})</option>
+              <option value="resolved">🟢 Resolved ({resolvedCount})</option>
+              <option value="all">All ({events.length})</option>
+            </select>
+            <button
+              className="mp-btn mp-btn-secondary mp-refresh-btn"
+              onClick={loadAssignments}
+            >
+              ↻ Refresh
+            </button>
+          </div>
+        </div>
+
+        {loading && (
+          <div className="mp-loading">
+            <div className="mp-spinner"></div>
+            <span>Loading assignments...</span>
+          </div>
+        )}
+        {!loading && error && <div className="mp-empty">Error: {error}</div>}
+        {!loading && !error && filteredEvents.length === 0 && (
+          <div className="mp-empty">
+            {filter === "active"
+              ? "No active assignments. You're all caught up! 🎉"
+              : filter === "resolved"
+              ? "No resolved events yet."
+              : "No assignments found."}
+          </div>
+        )}
+
+        {!loading && !error && filteredEvents.length > 0 && (
+          <div className="mp-list">
+            {filteredEvents.map((event) => {
+              const statusCfg = STATUS_CONFIG[event.status] || STATUS_CONFIG.assigned;
+              const pollCfg = POLLUTION_TYPES[event.pollutionType] || POLLUTION_TYPES.other;
+              const isActing = actionLoading === event.id;
+
+              return (
+                <div
+                  key={event.id}
+                  className={`mp-card mp-event-card severity-${event.severity}`}
+                >
+                  <div className="mp-priority-strip"></div>
+
+                  {/* Header */}
+                  <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>{pollCfg.icon}</span>
+                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0" }}>{pollCfg.label}</span>
+                      </div>
+                      <span
+                        className="mp-status-badge"
+                        style={{
+                          background: `${statusCfg.color}22`,
+                          color: statusCfg.color,
+                        }}
+                      >
+                        {statusCfg.icon} {statusCfg.label}
+                      </span>
+                    </div>
+
+                    {/* Details */}
+                    <div style={{ paddingLeft: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <div style={{ fontSize: "12px", color: "#4ade80", fontWeight: 600 }}>
+                        📍 {event.locationName || "Unknown"}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px", fontSize: "11px", color: "#64748b", alignItems: "center" }}>
+                        <span>{timeAgo(event.timestamp)}</span>
+                        <span>•</span>
+                        <span style={{ textTransform: "uppercase", fontWeight: 600, fontSize: "10px" }}>{event.severity}</span>
+                      </div>
+                      {event.text && (
+                        <div style={{ fontSize: "12px", color: "#94a3b8", lineHeight: 1.4, marginTop: "2px" }}>
+                          {event.text.substring(0, 140)}
+                          {event.text.length > 140 ? "..." : ""}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="mp-actions" style={{ flexDirection: 'column', gap: '8px', padding: '0 8px' }}>
+                      {event.status === "assigned" && (
+                        <button
+                          className="mp-btn mp-btn-primary"
+                          disabled={isActing}
+                          onClick={() => handleStatusChange(event.id, "worker_en_route")}
+                          style={{ width: "100%" }}
+                        >
+                          🚚 Start Journey
+                        </button>
+                      )}
+                      {event.status === "worker_en_route" && (
+                        <button
+                          className="mp-btn mp-btn-primary"
+                          disabled={isActing}
+                          onClick={() => handleStatusChange(event.id, "reached")}
+                          style={{ width: "100%" }}
+                        >
+                          📍 Reached Location
+                        </button>
+                      )}
+                      {event.status === "reached" && (
+                        <label className="mp-btn mp-btn-resolve" style={{ cursor: isActing ? 'not-allowed' : 'pointer', textAlign: 'center', display: 'block', width: '100%' }}>
+                          📸 Upload Completion Photo (AI Verification)
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            style={{ display: 'none' }}
+                            disabled={isActing}
+                            onChange={(e) => {
+                              if (e.target.files?.[0]) handleVerifyResolution(event.id, e.target.files[0]);
+                            }}
+                          />
+                        </label>
+                      )}
+                      {event.status === "cleanup_done" && (
+                        <span style={{ color: '#0ea5e9', fontSize: '12px', fontWeight: 600 }}>🤖 Pending Final Review by Municipality</span>
+                      )}
+                      {event.status === "resolved" && (
+                        <span style={{ color: '#22c55e', fontSize: '12px', fontWeight: 600 }}>✅ Verified & Resolved</span>
+                      )}
+
+                      {event.lat && event.lng && (
+                         <a 
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="mp-btn mp-btn-secondary"
+                            style={{ textAlign: 'center', textDecoration: 'none', display: 'block', width: '100%' }}
+                          >
+                            🗺️ Navigate
+                         </a>
+                      )}
+                    </div>
+
+                    {isActing && (
+                      <div className="mp-action-overlay">
+                        <div className="mp-spinner mp-spinner-sm"></div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderMapTab = () => {
+    let defaultCenter = { lat: 26.15, lng: 91.75 };
+    let defaultZoom = 12;
+
+    const eventsWithCoords = filteredEvents.filter(e => e.lat && e.lng);
+    if (eventsWithCoords.length > 0) {
+      const sumLat = eventsWithCoords.reduce((sum, e) => sum + parseFloat(e.lat), 0);
+      const sumLng = eventsWithCoords.reduce((sum, e) => sum + parseFloat(e.lng), 0);
+      defaultCenter = {
+        lat: sumLat / eventsWithCoords.length,
+        lng: sumLng / eventsWithCoords.length
+      };
+      defaultZoom = 13;
+    }
+
+    return (
+      <div className="mdl-tab-content" style={{ height: "calc(100vh - 40px)" }}>
+        <h2 className="mdl-page-title">Nearby Hotspots & Tasks</h2>
+        <div style={{ height: 'calc(100% - 60px)', width: '100%', borderRadius: '8px', overflow: 'hidden' }}>
+          <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
+            <Map
+              defaultZoom={defaultZoom}
+              defaultCenter={defaultCenter}
+              mapId="worker-hotspot-map"
+              disableDefaultUI={true}
+            >
+            {hotspots.map((h, i) => (
+              <AdvancedMarker key={i} position={{ lat: h.lat, lng: h.lng }}>
+                <Pin background="#ef4444" borderColor="#7f1d1d" glyphColor="#7f1d1d" />
+              </AdvancedMarker>
+            ))}
+            {filteredEvents.map(e => e.lat && e.lng && (
+              <AdvancedMarker key={e.id} position={{ lat: e.lat, lng: e.lng }}>
+                <Pin background="#3b82f6" borderColor="#1e3a8a" glyphColor="#1e3a8a" />
+              </AdvancedMarker>
+            ))}
+          </Map>
+        </APIProvider>
+        <div style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.8rem', color: '#9ca3af' }}>
+          <span style={{ color: '#ef4444' }}>🔴 Hotspots</span> | <span style={{ color: '#3b82f6' }}>🔵 My Tasks</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+  const renderProfileTab = () => (
+    <div className="mdl-tab-content">
+      <div className="mdl-page-header">
+        <h2 className="mdl-page-title">Team Profile</h2>
+        {!editingTeamId && profile && (
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button
+              className="mp-btn mp-btn-primary"
+              onClick={() => startEditing(null)}
+            >
+              ➕ Add Team
+            </button>
+          </div>
+        )}
+      </div>
+
+      {profile && editingTeamId ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', background: '#1e293b', padding: '20px', borderRadius: '8px', marginTop: '20px' }}>
+          <div style={{ gridColumn: 'span 2' }}>
+            <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Team Name</label>
+            <input 
+              type="text" 
+              value={editTeamName} 
+              onChange={e => setEditTeamName(e.target.value)} 
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white', boxSizing: 'border-box' }} 
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Name of the Worker (Lead)</label>
+            <input 
+              type="text" 
+              value={editWorkerName} 
+              onChange={e => setEditWorkerName(e.target.value)} 
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white', boxSizing: 'border-box' }} 
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Gender</label>
+            <select 
+              value={editGender} 
+              onChange={e => setEditGender(e.target.value)}
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white', boxSizing: 'border-box' }}
+            >
+              <option value="">Select...</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Team Strength</label>
+            <input 
+              type="number" 
+              min="1"
+              value={editStrength} 
+              onChange={e => setEditStrength(e.target.value)} 
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white', boxSizing: 'border-box' }} 
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Government ID</label>
+            <input 
+              type="text" 
+              value={editGovtId} 
+              onChange={e => setEditGovtId(e.target.value)} 
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white', boxSizing: 'border-box' }} 
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Mobile Number</label>
+            <input 
+              type="text" 
+              value={editMobile} 
+              onChange={e => setEditMobile(e.target.value)} 
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white', boxSizing: 'border-box' }} 
+            />
+          </div>
+          <div style={{ gridColumn: 'span 2' }}>
+            <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Office Address</label>
+            <input 
+              type="text" 
+              value={editOfficeAddress} 
+              onChange={e => setEditOfficeAddress(e.target.value)} 
+              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white', boxSizing: 'border-box' }} 
+            />
+          </div>
+          <div style={{ display: 'flex', gap: '10px', marginTop: '10px', gridColumn: 'span 2' }}>
+            <button 
+              onClick={saveTeam}
+              className="mp-btn mp-btn-primary"
+            >Save</button>
+            <button 
+              onClick={cancelEditing}
+              className="mp-btn mp-btn-secondary"
+            >Cancel</button>
+          </div>
+        </div>
+      ) : profile && profile.teams && profile.teams.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '20px' }}>
+          {profile.teams.map((team) => (
+            <div key={team.id} style={{ background: '#1e293b', padding: '24px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
+              <button
+                className="mp-btn mp-btn-secondary"
+                style={{ position: 'absolute', top: '24px', right: '24px' }}
+                onClick={() => startEditing(team)}
+              >
+                ✏️ Edit
+              </button>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Team Name</p>
+                  <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold', color: '#f8fafc' }}>{team.teamName || "N/A"}</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Lead Worker</p>
+                  <p style={{ margin: 0, color: '#e2e8f0' }}>{team.workerName || "N/A"}</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Gender</p>
+                  <p style={{ margin: 0, color: '#e2e8f0' }}>{team.gender || "N/A"}</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Team Strength</p>
+                  <p style={{ margin: 0, color: '#e2e8f0' }}>{team.teamStrength} Member(s)</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Government ID</p>
+                  <p style={{ margin: 0, color: '#e2e8f0' }}>{team.govtId || "N/A"}</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Mobile Number</p>
+                  <p style={{ margin: 0, color: '#e2e8f0' }}>{team.mobile || "N/A"}</p>
+                </div>
+                <div>
+                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Email</p>
+                  <p style={{ margin: 0, color: '#e2e8f0' }}>{profile.email}</p>
+                </div>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Office Address</p>
+                  <p style={{ margin: 0, color: '#e2e8f0' }}>{team.officeAddress || "N/A"}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ background: '#1e293b', padding: '24px', borderRadius: '8px', marginTop: '20px', textAlign: 'center', color: '#9ca3af' }}>
+          No teams found. Click "Add Team" to create one.
+        </div>
+      )}
+    </div>
+  );
+
+  // --- Full Screen Layout (same as Municipal) ---
+  if (isFullScreen) {
+    return (
+      <div className={`municipal-dashboard-layout ${activeTab === "map" ? "transparent-layout" : ""}`}>
+        {/* Sidebar Toggle Button */}
+        <button
+          className={`sidebar-toggle-btn ${isSidebarOpen ? "open" : "closed"}`}
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          title="Toggle Sidebar"
+        >
+          {isSidebarOpen ? "◀" : "▶"}
+        </button>
+
+        {/* Sidebar Navigation */}
+        <div className={`mdl-sidebar ${isSidebarOpen ? "" : "collapsed"}`}>
+          <div className="mdl-brand">
+            <span className="mdl-logo">🌬️</span>
+            <h2>VayuAI Field</h2>
+          </div>
+
+          <nav className="mdl-nav">
+            <button
+              className={`mdl-nav-item ${activeTab === "dashboard" ? "active" : ""}`}
+              onClick={() => setActiveTab("dashboard")}
+            >
+              <span className="mdl-nav-icon">📊</span>
+              Dashboard
+            </button>
+            <button
+              className={`mdl-nav-item ${activeTab === "tasks" ? "active" : ""}`}
+              onClick={() => setActiveTab("tasks")}
+            >
+              <span className="mdl-nav-icon">📋</span>
+              My Tasks
+              {activeCount > 0 && (
+                <span style={{
+                  marginLeft: "auto",
+                  background: "#f59e0b",
+                  color: "#0f172a",
+                  borderRadius: "10px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                }}>{activeCount}</span>
+              )}
+            </button>
+            <button
+              className={`mdl-nav-item ${activeTab === "profile" ? "active" : ""}`}
+              onClick={() => setActiveTab("profile")}
+            >
+              <span className="mdl-nav-icon">👤</span>
+              Team Profile
+            </button>
+            <button
+              className={`mdl-nav-item ${activeTab === "local_map" ? "active" : ""}`}
+              onClick={() => setActiveTab("local_map")}
+            >
+              <span className="mdl-nav-icon">📍</span>
+              My Local Area
+            </button>
+
+            <div style={{ margin: "16px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}></div>
+
+            <button
+              className={`mdl-nav-item ${activeTab === "map" ? "active" : ""}`}
+              onClick={() => setActiveTab("map")}
+            >
+              <span className="mdl-nav-icon">🗺️</span>
+              Live Map
+            </button>
+
+            {/* Map Controls */}
+            {activeTab === "map" && (
+              <div className="mdl-map-controls">
+                <span className="mdl-controls-header">Map Tools</span>
+                <button
+                  className={`mdl-control-btn ${isLive ? "active" : ""}`}
+                  onClick={onToggleLive}
+                >
+                  {isLive ? "⏸ Pause Feed" : "▶ Resume Feed"}
+                </button>
+                <button
+                  className={`mdl-control-btn ${heatmapActive ? "active" : ""}`}
+                  onClick={() => setHeatmapActive(!heatmapActive)}
+                >
+                  🔥 Heatmap
+                </button>
+                <button
+                  className={`mdl-control-btn ${sensorsActive ? "active" : ""}`}
+                  onClick={() => setSensorsActive(!sensorsActive)}
+                >
+                  📡 IoT Sensors
+                </button>
+              </div>
+            )}
+          </nav>
+
+          <div className="mdl-sidebar-footer">
+            <div className="mdl-user-info">
+              <span className="mdl-user-email">{currentUser?.email}</span>
+              <span className="mp-badge mp-badge-role" style={{ background: "rgba(251,146,60,0.15)", color: "#fb923c", border: "1px solid rgba(251,146,60,0.3)", padding: "2px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", width: "fit-content" }}>
+                Field Worker
+              </span>
+            </div>
+            <button className="mdl-logout-btn" onClick={onLogout}>
+              Sign Out
+            </button>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="mdl-main">
+          {activeTab === "dashboard" && renderDashboardTab()}
+          {activeTab === "tasks" && renderTasksTab()}
+          {activeTab === "profile" && renderProfileTab()}
+          {activeTab === "local_map" && renderMapTab()}
+        </div>
+      </div>
+    );
+  }
+
+  // --- Fallback floating panel (for non-fullscreen usage) ---
   return (
     <div className="worker-panel">
       <div className="wp-header">
@@ -116,391 +724,10 @@ export default function WorkerPanel({ onClose }) {
         </div>
         <button className="wp-close-btn" onClick={onClose}>×</button>
       </div>
-
-      {/* Main Tabs */}
-      <div className="wp-main-tabs" style={{ display: 'flex', borderBottom: '1px solid #374151', marginBottom: '1rem' }}>
-        <button 
-          style={{ flex: 1, padding: '0.75rem', background: activeTab === 'tasks' ? '#374151' : 'transparent', border: 'none', color: activeTab === 'tasks' ? 'white' : '#9ca3af', cursor: 'pointer' }}
-          onClick={() => setActiveTab('tasks')}
-        >📋 Tasks</button>
-        <button 
-          style={{ flex: 1, padding: '0.75rem', background: activeTab === 'map' ? '#374151' : 'transparent', border: 'none', color: activeTab === 'map' ? 'white' : '#9ca3af', cursor: 'pointer' }}
-          onClick={() => setActiveTab('map')}
-        >🗺️ Nearby Hotspots</button>
-        <button 
-          style={{ flex: 1, padding: '0.75rem', background: activeTab === 'profile' ? '#374151' : 'transparent', border: 'none', color: activeTab === 'profile' ? 'white' : '#9ca3af', cursor: 'pointer' }}
-          onClick={() => setActiveTab('profile')}
-        >👤 Team Profile</button>
-      </div>
-
-      {activeTab === 'tasks' && (
-        <>
-          {/* Stats Bar */}
-          <div className="wp-stats">
-            <div className="wp-stat">
-              <span className="wp-stat-value wp-stat-active">{activeCount}</span>
-              <span className="wp-stat-label">Active</span>
-            </div>
-            <div className="wp-stat">
-              <span className="wp-stat-value wp-stat-resolved">{resolvedCount}</span>
-              <span className="wp-stat-label">Resolved</span>
-            </div>
-            <div className="wp-stat">
-              <span className="wp-stat-value">{events.length}</span>
-              <span className="wp-stat-label">Total</span>
-            </div>
-          </div>
-
-          {/* Filter Tabs */}
-          <div className="wp-filter-tabs">
-            <button
-              className={`wp-filter-tab ${filter === "active" ? "wp-filter-active" : ""}`}
-              onClick={() => setFilter("active")}
-            >
-              🔴 Active ({activeCount})
-            </button>
-            <button
-              className={`wp-filter-tab ${filter === "resolved" ? "wp-filter-active" : ""}`}
-              onClick={() => setFilter("resolved")}
-            >
-              🟢 Resolved ({resolvedCount})
-            </button>
-            <button
-              className={`wp-filter-tab ${filter === "all" ? "wp-filter-active" : ""}`}
-              onClick={() => setFilter("all")}
-            >
-              All
-            </button>
-            <button className="wp-refresh-btn" onClick={loadAssignments} title="Refresh">
-              ↻
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* Content */}
       <div className="wp-content">
-        {activeTab === 'map' && (
-           <div style={{ height: '400px', width: '100%', borderRadius: '8px', overflow: 'hidden' }}>
-             <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
-               <Map
-                  defaultZoom={12}
-                  defaultCenter={{ lat: 26.15, lng: 91.75 }}
-                  mapId="worker-hotspot-map"
-                  disableDefaultUI={true}
-               >
-                  {hotspots.map((h, i) => (
-                    <AdvancedMarker key={i} position={{ lat: h.lat, lng: h.lng }}>
-                      <Pin background="#ef4444" borderColor="#7f1d1d" glyphColor="#7f1d1d" />
-                    </AdvancedMarker>
-                  ))}
-                  {filteredEvents.map(e => e.lat && e.lng && (
-                    <AdvancedMarker key={e.id} position={{ lat: e.lat, lng: e.lng }}>
-                      <Pin background="#3b82f6" borderColor="#1e3a8a" glyphColor="#1e3a8a" />
-                    </AdvancedMarker>
-                  ))}
-               </Map>
-             </APIProvider>
-             <div style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.8rem', color: '#9ca3af' }}>
-               <span style={{ color: '#ef4444' }}>🔴 Hotspots</span> | <span style={{ color: '#3b82f6' }}>🔵 My Tasks</span>
-             </div>
-           </div>
-        )}
-
-        {activeTab === 'profile' && profile && (
-          <div className="wp-profile">
-            <h3>Team Profile</h3>
-            {editingProfile ? (
-              <div className="wp-profile-form" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', background: '#1e293b', padding: '20px', borderRadius: '8px' }}>
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af' }}>Team Name</label>
-                  <input 
-                    type="text" 
-                    value={editTeamName} 
-                    onChange={e => setEditTeamName(e.target.value)} 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white' }} 
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af' }}>Name of the Worker (Lead)</label>
-                  <input 
-                    type="text" 
-                    value={editWorkerName} 
-                    onChange={e => setEditWorkerName(e.target.value)} 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white' }} 
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af' }}>Gender</label>
-                  <select 
-                    value={editGender} 
-                    onChange={e => setEditGender(e.target.value)}
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white' }}
-                  >
-                    <option value="">Select...</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af' }}>Team Strength</label>
-                  <input 
-                    type="number" 
-                    min="1"
-                    value={editStrength} 
-                    onChange={e => setEditStrength(e.target.value)} 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white' }} 
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af' }}>Government ID</label>
-                  <input 
-                    type="text" 
-                    value={editGovtId} 
-                    onChange={e => setEditGovtId(e.target.value)} 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white' }} 
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af' }}>Mobile Number</label>
-                  <input 
-                    type="text" 
-                    value={editMobile} 
-                    onChange={e => setEditMobile(e.target.value)} 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white' }} 
-                  />
-                </div>
-                <div style={{ gridColumn: 'span 2' }}>
-                  <label style={{ display: 'block', marginBottom: '5px', color: '#9ca3af' }}>Office Address</label>
-                  <input 
-                    type="text" 
-                    value={editOfficeAddress} 
-                    onChange={e => setEditOfficeAddress(e.target.value)} 
-                    style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #374151', background: '#0f172a', color: 'white' }} 
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px', gridColumn: 'span 2' }}>
-                  <button 
-                    onClick={async () => {
-                      try {
-                        const payload = { 
-                          teamName: editTeamName, 
-                          workerName: editWorkerName, 
-                          gender: editGender, 
-                          teamStrength: editStrength,
-                          govtId: editGovtId,
-                          mobile: editMobile,
-                          officeAddress: editOfficeAddress
-                        };
-                        const updated = await updateWorkerProfile(currentUser, payload);
-                        setProfile(prev => ({ ...prev, ...updated.profile }));
-                        setEditingProfile(false);
-                        alert("Profile updated successfully!");
-                      } catch(err) {
-                        alert("Failed to update: " + err.message);
-                      }
-                    }}
-                    style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer' }}
-                  >Save</button>
-                  <button 
-                    onClick={() => {
-                      setEditTeamName(profile.teamName || "");
-                      setEditWorkerName(profile.workerName || "");
-                      setEditGender(profile.gender || "");
-                      setEditStrength(profile.teamStrength || 1);
-                      setEditGovtId(profile.govtId || "");
-                      setEditMobile(profile.mobile || "");
-                      setEditOfficeAddress(profile.officeAddress || "");
-                      setEditingProfile(false);
-                    }}
-                    style={{ background: 'transparent', border: '1px solid #374151', color: '#9ca3af', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer' }}
-                  >Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <div style={{ background: '#1e293b', padding: '20px', borderRadius: '8px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                <div style={{ gridColumn: 'span 2' }}>
-                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Team Name</p>
-                  <p style={{ margin: 0, fontSize: '18px', fontWeight: 'bold' }}>{profile.teamName || "N/A"}</p>
-                </div>
-                <div>
-                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Lead Worker</p>
-                  <p style={{ margin: 0 }}>{profile.workerName || "N/A"}</p>
-                </div>
-                <div>
-                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Gender</p>
-                  <p style={{ margin: 0 }}>{profile.gender || "N/A"}</p>
-                </div>
-                <div>
-                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Team Strength</p>
-                  <p style={{ margin: 0 }}>{profile.teamStrength} Member(s)</p>
-                </div>
-                <div>
-                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Government ID</p>
-                  <p style={{ margin: 0 }}>{profile.govtId || "N/A"}</p>
-                </div>
-                <div>
-                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Mobile Number</p>
-                  <p style={{ margin: 0 }}>{profile.mobile || "N/A"}</p>
-                </div>
-                <div>
-                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Email</p>
-                  <p style={{ margin: 0 }}>{profile.email}</p>
-                </div>
-                <div style={{ gridColumn: 'span 2' }}>
-                  <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Office Address</p>
-                  <p style={{ margin: 0 }}>{profile.officeAddress || "N/A"}</p>
-                </div>
-                <div style={{ gridColumn: 'span 2' }}>
-                  <button 
-                    onClick={() => setEditingProfile(true)}
-                    style={{ marginTop: '10px', background: 'transparent', border: '1px solid #3b82f6', color: '#3b82f6', padding: '8px 15px', borderRadius: '6px', cursor: 'pointer' }}
-                  >
-                    Edit Profile
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'tasks' && loading && (
-          <div className="wp-loading">
-            <div className="wp-spinner"></div>
-            <span>Loading assignments...</span>
-          </div>
-        )}
-
-        {!loading && error && (
-          <div className="wp-empty">Error: {error}</div>
-        )}
-
-        {!loading && !error && filteredEvents.length === 0 && (
-          <div className="wp-empty">
-            {filter === "active"
-              ? "No active assignments. You're all caught up! 🎉"
-              : filter === "resolved"
-              ? "No resolved events yet."
-              : "No assignments found."}
-          </div>
-        )}
-
-        {!loading && !error && filteredEvents.length > 0 && (
-          <div className="wp-list">
-            {filteredEvents.map((event) => {
-              const statusCfg = STATUS_CONFIG[event.status] || STATUS_CONFIG.assigned;
-              const pollCfg = POLLUTION_TYPES[event.pollutionType] || POLLUTION_TYPES.other;
-              const isActing = actionLoading === event.id;
-
-              return (
-                <div
-                  key={event.id}
-                  className={`wp-card severity-${event.severity}`}
-                >
-                  <div className="wp-card-strip"></div>
-
-                  {/* Header */}
-                  <div className="wp-card-header">
-                    <div className="wp-card-type">
-                      <span>{pollCfg.icon}</span>
-                      <span className="wp-card-type-label">{pollCfg.label}</span>
-                    </div>
-                    <span
-                      className="wp-status-badge"
-                      style={{
-                        background: `${statusCfg.color}22`,
-                        color: statusCfg.color,
-                      }}
-                    >
-                      {statusCfg.icon} {statusCfg.label}
-                    </span>
-                  </div>
-
-                  {/* Details */}
-                  <div className="wp-card-details">
-                    <div className="wp-card-location">
-                      📍 {event.locationName || "Unknown"}
-                    </div>
-                    <div className="wp-card-meta">
-                      <span>{timeAgo(event.timestamp)}</span>
-                      <span>•</span>
-                      <span className="wp-severity-tag">{event.severity}</span>
-                    </div>
-                    {event.text && (
-                      <div className="wp-card-text">
-                        {event.text.substring(0, 140)}
-                        {event.text.length > 140 ? "..." : ""}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Actions */}
-                  <div className="wp-card-actions" style={{ flexDirection: 'column', gap: '8px' }}>
-                    {event.status === "assigned" && (
-                      <button
-                        className="wp-btn wp-btn-primary"
-                        disabled={isActing}
-                        onClick={() => handleStatusChange(event.id, "worker_en_route")}
-                      >
-                        🚚 Start Journey
-                      </button>
-                    )}
-                    {event.status === "worker_en_route" && (
-                      <button
-                        className="wp-btn wp-btn-primary"
-                        disabled={isActing}
-                        onClick={() => handleStatusChange(event.id, "reached")}
-                      >
-                        📍 Reached Location
-                      </button>
-                    )}
-                    {event.status === "reached" && (
-                      <>
-                        <label className="wp-btn wp-btn-resolve" style={{ cursor: isActing ? 'not-allowed' : 'pointer', textAlign: 'center' }}>
-                          📸 Upload Completion Photo (AI Verification)
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            style={{ display: 'none' }}
-                            disabled={isActing}
-                            onChange={(e) => {
-                              if (e.target.files?.[0]) handleVerifyResolution(event.id, e.target.files[0]);
-                            }}
-                          />
-                        </label>
-                      </>
-                    )}
-                    {event.status === "cleanup_done" && (
-                      <span className="wp-resolved-label" style={{ color: '#0ea5e9' }}>🤖 Pending Final Review by Municipality</span>
-                    )}
-                    {event.status === "resolved" && (
-                      <span className="wp-resolved-label">✅ Verified & Resolved</span>
-                    )}
-
-                    {event.lat && event.lng && (
-                       <a 
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="wp-btn wp-btn-secondary"
-                          style={{ textAlign: 'center', textDecoration: 'none', background: '#374151', padding: '0.5rem', borderRadius: '4px', color: 'white' }}
-                        >
-                          🗺️ Navigate
-                       </a>
-                    )}
-                  </div>
-
-                  {isActing && (
-                    <div className="wp-action-overlay">
-                      <div className="wp-spinner wp-spinner-sm"></div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="mp-empty">
+          Please use the full-screen dashboard view.
+        </div>
       </div>
     </div>
   );
