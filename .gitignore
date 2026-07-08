@@ -29,3 +29,6 @@ dist-ssr
 *serviceAccountKey*.json
 server/.env
 
+# Ignore markdown files except architecture doc
+*.md
+!docs/ARCHITECTURE.md

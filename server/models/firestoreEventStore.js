@@ -350,6 +350,63 @@ class FirestoreEventStore {
 
   // --- New CRUD methods for Phase 4 (Municipality) ---
 
+  async getCitizenEvents(citizenUid) {
+    // Return from Firestore directly to bypass the 500 maxEvents limit in memory cache
+    try {
+      const snapshot = await adminDb
+        .collection(COLLECTION)
+        .where("citizenUid", "==", citizenUid)
+        .get();
+      
+      const firestoreEvents = snapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
+      
+      // Also check corroboratingCitizenUids
+      const corrobSnapshot = await adminDb
+        .collection(COLLECTION)
+        .where("corroboratingCitizenUids", "array-contains", citizenUid)
+        .get();
+        
+      const corrobEvents = corrobSnapshot.docs.map(doc => ({ firestoreId: doc.id, ...doc.data() }));
+      
+      // Merge and deduplicate
+      const allEvents = [...firestoreEvents, ...corrobEvents];
+      const uniqueEvents = [];
+      const seen = new Set();
+      for (const e of allEvents) {
+        if (!seen.has(e.id)) {
+          seen.add(e.id);
+          uniqueEvents.push(e);
+        }
+      }
+      
+      // Merge with any in-memory events that might not be fully synced yet
+      const memoryEvents = this.events.filter(e => 
+        e.citizenUid === citizenUid || 
+        (e.corroboratingCitizenUids && e.corroboratingCitizenUids.includes(citizenUid))
+      );
+      
+      for (const me of memoryEvents) {
+        if (!seen.has(me.id)) {
+          seen.add(me.id);
+          uniqueEvents.push(me);
+        } else {
+          // Update uniqueEvents with memory event as it might be fresher
+          const idx = uniqueEvents.findIndex(e => e.id === me.id);
+          if (idx !== -1) uniqueEvents[idx] = me;
+        }
+      }
+
+      return uniqueEvents.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    } catch (error) {
+      console.error("Error fetching citizen events from Firestore:", error);
+      // Fallback to in-memory store
+      return this.events.filter(e => 
+        e.citizenUid === citizenUid || 
+        (e.corroboratingCitizenUids && e.corroboratingCitizenUids.includes(citizenUid))
+      ).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }
+  }
+
   getById(eventId) {
     return this.events.find((e) => e.id === eventId) || null;
   }
@@ -433,18 +490,41 @@ class FirestoreEventStore {
     return event;
   }
 
+  async getByIdAsync(eventId) {
+    let event = this.events.find((e) => e.id === eventId);
+    if (event) return event;
+    
+    // Fallback to Firestore if not in memory cache
+    try {
+      const snapshot = await adminDb.collection(COLLECTION).where("id", "==", eventId).limit(1).get();
+      if (!snapshot.empty) {
+        return { firestoreId: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+      }
+    } catch (err) {
+      console.error("Error fetching event by ID from Firestore:", err.message);
+    }
+    return null;
+  }
+
   async deleteEvent(eventId) {
+    // 1. Remove from memory cache if it exists
     const idx = this.events.findIndex((e) => e.id === eventId);
-    if (idx === -1) return false;
-
-    const event = this.events[idx];
-    this.events.splice(idx, 1);
-
-    if (event.firestoreId) {
-      await adminDb.collection(COLLECTION).doc(event.firestoreId).delete();
+    if (idx !== -1) {
+      this.events.splice(idx, 1);
     }
 
-    return true;
+    // 2. Delete from Firestore
+    try {
+      const snapshot = await adminDb.collection(COLLECTION).where("id", "==", eventId).limit(1).get();
+      if (!snapshot.empty) {
+        await adminDb.collection(COLLECTION).doc(snapshot.docs[0].id).delete();
+        return true;
+      }
+      return idx !== -1;
+    } catch (err) {
+      console.error("Firestore delete failed:", err.message);
+      return false;
+    }
   }
 }
 

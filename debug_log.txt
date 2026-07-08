@@ -1,0 +1,1 @@
+{"error":"Invalid image data provided for one or both images.","before":"/images/smoke1.jpeg","after":"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD"}

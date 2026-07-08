@@ -231,6 +231,13 @@ export async function deleteWorkerTeam(user, workerUid, teamId) {
   return res.json();
 }
 
+export async function verifyEventAI(user, eventId) {
+  const res = await authFetch(`${API_BASE}/municipality/events/${eventId}/verify-ai`, {
+    method: 'POST'
+  });
+  return res.json();
+}
+
 // --- Citizen APIs (require auth session + citizen role) ---
 
 export async function fetchCitizenEvents(user) {

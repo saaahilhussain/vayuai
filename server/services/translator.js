@@ -43,7 +43,7 @@ export async function translateText(text) {
 
       if (isLastAttempt) {
         console.error(`Translation API failed after ${MAX_RETRIES} attempts:`, err.cause?.code || err.message);
-        return { translatedText: text, detectedLanguage: 'en' }; // Fallback to original
+        return { translatedText: "API credits are exhausted. Contact admin or try again later.", detectedLanguage: 'en' };
       }
 
       // Exponential backoff: 500ms, 1000ms, 2000ms...

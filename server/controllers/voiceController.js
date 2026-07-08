@@ -58,7 +58,7 @@ export async function postVoiceTweet(req, res) {
       text = transcription;
     } catch (err) {
       console.error("Speech-to-Text API Error:", err);
-      text = "Voice transcription failed: " + err.message;
+      text = "API credits are exhausted. Contact admin or try again later.";
     }
   } else {
     // Mock processing for local dev if GCP not configured

@@ -31,11 +31,43 @@ export default function CitizenPanel({ onClose, globalEvents = [], onRefresh }) 
   const [deletingEventId, setDeletingEventId] = useState(null);
   const [expandedEventId, setExpandedEventId] = useState(null);
 
-  // Derive citizen events reactively from the live globalEvents array
-  const events = globalEvents.filter(e => 
-    e.citizenUid === currentUser?.uid || 
-    (e.corroboratingCitizenUids && e.corroboratingCitizenUids.includes(currentUser?.uid))
-  ).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const [fetchedEvents, setFetchedEvents] = useState([]);
+
+  const loadEvents = useCallback(async () => {
+    if (!currentUser) return;
+    setLoading(true);
+    try {
+      const data = await fetchCitizenEvents(currentUser);
+      if (data.success) {
+        setFetchedEvents(data.events);
+      } else {
+        setError(data.error || "Failed to load events");
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    loadEvents();
+  }, [loadEvents]);
+
+  // Derive citizen events reactively from the live globalEvents array and fetched database events
+  const events = React.useMemo(() => {
+    const liveCitizenEvents = globalEvents.filter(e => 
+      e.citizenUid === currentUser?.uid || 
+      (e.corroboratingCitizenUids && e.corroboratingCitizenUids.includes(currentUser?.uid))
+    );
+    
+    const eventMap = new Map();
+    fetchedEvents.forEach(e => eventMap.set(e.id, e));
+    liveCitizenEvents.forEach(e => eventMap.set(e.id, e));
+    
+    return Array.from(eventMap.values())
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }, [globalEvents, fetchedEvents, currentUser?.uid]);
 
   const handleFeedback = async (eventId, rating) => {
     setFeedbackLoading(eventId);

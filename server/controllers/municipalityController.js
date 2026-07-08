@@ -1,5 +1,31 @@
 import { store } from "../services/shared.js";
 import { adminDb } from "../config/firebaseAdmin.js";
+import { compareImages } from "../services/imageAnalysis.js";
+
+export async function verifyResolutionAI(req, res) {
+  const { id } = req.params;
+  const event = store.getById(id);
+
+  if (!event) {
+    return res.status(404).json({ error: "Event not found" });
+  }
+
+  if (!event.imageUrl || !event.resolutionProofUrl) {
+    return res.status(400).json({ error: "Both original and resolution images are required for AI verification." });
+  }
+
+  try {
+    const result = await compareImages(event.imageUrl, event.resolutionProofUrl);
+    if (!result.available) {
+      import("fs").then(fs => fs.writeFileSync("debug_log.txt", JSON.stringify({ error: result.error, before: event.imageUrl.substring(0, 50), after: event.resolutionProofUrl.substring(0, 50) })));
+      return res.status(500).json({ error: result.error || "AI comparison unavailable" });
+    }
+    res.json({ success: true, result });
+  } catch (error) {
+    import("fs").then(fs => fs.writeFileSync("debug_log.txt", "Exception: " + error.message));
+    res.status(500).json({ error: "Internal server error during AI verification" });
+  }
+}
 
 const USERS_COLLECTION = "users";
 

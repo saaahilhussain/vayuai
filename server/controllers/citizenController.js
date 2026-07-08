@@ -1,12 +1,12 @@
 import { store } from "../services/shared.js";
 
-export function getCitizenEvents(req, res) {
+export async function getCitizenEvents(req, res) {
   const citizenUid = req.user.uid;
-  let events = store.getAll();
-  events = events.filter((e) => e.citizenUid === citizenUid);
+  const events = await store.getCitizenEvents(citizenUid);
 
-  const mapped = events.reverse().map((e) => ({
+  const mapped = events.map((e) => ({
     id: e.id,
+    reportId: e.reportId,
     text: e.text,
     pollutionType: e.pollutionType,
     severity: e.severity,
@@ -15,6 +15,9 @@ export function getCitizenEvents(req, res) {
     timestamp: e.timestamp,
     imageUrl: e.imageUrl || null,
     feedback: e.feedback || null,
+    resolutionProofUrl: e.resolutionProofUrl || null,
+    citizenUid: e.citizenUid,
+    corroboratingCitizenUids: e.corroboratingCitizenUids || [],
   }));
 
   res.json({ success: true, events: mapped });
@@ -40,16 +43,16 @@ export function addFeedback(req, res) {
   res.json({ success: true, event });
 }
 
-export function deleteCitizenEvent(req, res) {
+export async function deleteCitizenEvent(req, res) {
   const { id } = req.params;
-  const event = store.getAll().find((e) => e.id === id);
+  const event = await store.getByIdAsync(id);
   if (!event) return res.status(404).json({ error: "Event not found" });
 
   if (event.citizenUid !== req.user.uid) {
     return res.status(403).json({ error: "Not authorized to delete this event" });
   }
 
-  const success = store.deleteEvent(id);
+  const success = await store.deleteEvent(id);
   if (success) {
     res.json({ success: true });
   } else {

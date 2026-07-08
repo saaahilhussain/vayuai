@@ -15,6 +15,7 @@ import {
   fetchWorkers,
   updateWorkerManualStatus,
   deleteWorkerTeam,
+  verifyEventAI,
   POLLUTION_TYPES,
   timeAgo,
 } from "../utils/api";
@@ -128,7 +129,6 @@ export default function MunicipalPanel({
   const [error, setError] = useState(null);
   const [actionLoading, setActionLoading] = useState(null);
   const [expandedEventId, setExpandedEventId] = useState(null);
-
   const handleNavClick = (tabName) => {
     if (tabName !== activeTab) {
       setStatusFilter("");
@@ -476,9 +476,24 @@ export default function MunicipalPanel({
                   }
                   style={{ cursor: "pointer" }}
                 >
-                  <div className="mp-event-type">
+                  <div className="mp-event-type" style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
                     <span>{pollCfg.icon}</span>
                     <span className="mp-event-type-label">{pollCfg.label}</span>
+                    {event.locationName && (
+                      <span style={{ fontSize: "13px", color: "#cbd5e1", marginLeft: "8px", display: "flex", alignItems: "center", gap: "4px" }}>
+                        📍 {event.locationName}
+                      </span>
+                    )}
+                    {event.imageUrl && (
+                      <span title="Image attached" style={{ fontSize: "14px", marginLeft: "4px" }}>
+                        🖼️
+                      </span>
+                    )}
+                    {event.videoUrl && (
+                      <span title="Video attached" style={{ fontSize: "14px", marginLeft: "4px" }}>
+                        📹
+                      </span>
+                    )}
                     {event.reportId && (
                       <span style={{ fontSize: "12px", color: "#94a3b8", marginLeft: "8px", fontFamily: "monospace" }}>
                         ID: {event.reportId}
@@ -653,6 +668,7 @@ export default function MunicipalPanel({
                           >
                             ↩ Reject & Reassign
                           </button>
+
                         </>
                       )}
 

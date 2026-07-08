@@ -1,6 +1,6 @@
 # VayuAI — System Architecture
 
-This document describes the full system architecture of VayuAI: how data flows from citizen reports and real-time sensors to map overlays, predictive forecasts, and municipal action briefs.
+This document describes the full system architecture of VayuAI: how data flows from citizen reports and real-time sensors to map overlays, predictive forecasts, municipal action briefs, and field worker resolution workflows.
 
 ---
 
@@ -11,14 +11,13 @@ This document describes the full system architecture of VayuAI: how data flows f
 │                              CLIENT (React + Vite)                          │
 │                                                                             │
 │   ┌──────────┐  ┌───────────┐  ┌──────────────┐  ┌──────────────────┐       │
-│   │ LiveMap  │  │ TweetFeed │  │ TimelinePanel│  │  AddTweetModal   │       │
-│   │ (MapLibre│  │ (live     │  │ (AQI forecast│  │  (image/video    │       │
-│   │  + Aren.)│  │  sidebar) │  │  playback)   │  │   submission)    │       │
-│   └────▲─────┘  └────▲──────┘  └──────▲───────┘  └───────┬──────────┘       │
-│        │             │                │                  │                  │
+│   │ LiveMap  │  │ ReportFeed│  │ Municipal/   │  │  AddTweetModal   │       │
+│   │ (MapLibre│  │ (live     │  │ Worker Panel │  │  (image/video    │       │
+│   │  + Aren.)│  │  sidebar) │  │ (Dispatch &  │  │   submission)    │       │
+│   └────▲─────┘  └────▲──────┘  │ Verification)│  └───────┬──────────┘       │
+│        │             │         └──────▲───────┘          │                  │
 │        └─────────────┴───────┬────────┘                  │                  │
-│                              │ SSE stream                │ POST /api/tweet  │
-│                              │ /api/events/stream        │                  │
+│                              │ SSE stream / REST API     │ POST /api/tweet  │
 └──────────────────────────────┼───────────────────────────┼──────────────────┘
                                │                           │
 ┌──────────────────────────────┼───────────────────────────┼──────────────────┐
@@ -34,8 +33,8 @@ This document describes the full system architecture of VayuAI: how data flows f
 │   └────────────────────────────┬────────────────────────────────────────┘   │
 │                                │                                            │
 │   ┌────────────────────────────▼────────────────────────────────────────┐   │
-│   │                      EventStore                                     │   │
-│   │  (in-memory ring buffer, max 500 events, aggregation methods)       │   │
+│   │               EventStore (In-memory cache) & Firestore Db           │   │
+│   │  (Memory buffer for live features + Firestore for persistence)      │   │
 │   └────────────────────────────┬────────────────────────────────────────┘   │
 │                                │                                            │
 │   ┌────────────────────────────▼────────────────────────────────────────┐   │
@@ -48,7 +47,8 @@ This document describes the full system architecture of VayuAI: how data flows f
 │                                 │                     │                     │
 │                                 ▼                     ▼                     │
 │                       ┌───────────────────────────────────┐                 │
-│                       │ MunicipalEngine (Gemini actions)  │                 │
+│                       │ MunicipalEngine (Gemini actions & │                 │
+│                       │ Resolution Verification)          │                 │
 │                       └───────────────────────────────────┘                 │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -65,9 +65,9 @@ A pollution event enters the system via one of two paths:
 | **Citizen report** | User submits text/image/video via AddTweetModal | `POST /api/tweet` → `processTweetDetailed()` |
 
 ### 2. Multi-Modal Analysis (Gemini Vision)
-If a user uploads an image or video, it is sent to **Gemini 3.5 Flash** (`imageAnalysis.js`):
+If a user uploads an image or video, it is sent to **Gemini Flash** (`imageAnalysis.js`):
 - **Images:** Analyzed for garbage burning, industrial smoke, construction dust, illegal dumping, or smog.
-- **Videos:** Client-side extracts up to 10 keyframes and sends them sequentially to Gemini for a holistic assessment of the incident.
+- **Videos:** Client-side extracts keyframes and sends them sequentially to Gemini for a holistic assessment of the incident.
 Gemini returns a strict JSON classification including pollution type and confidence.
 
 ### 3. NLP Pipeline (`nlpPipeline.js`)
@@ -91,10 +91,16 @@ A deterministic model forecasts AQI for the next 24 hours based on:
 4. Active hotspots (event pressure)
 
 ### 7. Municipal Intelligence (`municipalEngine.js`)
-When the Command Center is opened, the backend sends the top active hotspots, worst predictions, and weather data to the **Gemini API**. Gemini returns 3-5 highly actionable, prioritized interventions (e.g., "Deploy Water Mist Cannons to Fancy Bazaar") formatted for municipal dispatch teams.
+When the Command Center is opened, the backend sends the top active hotspots, worst predictions, and weather data to the **Gemini API**. Gemini returns 3-5 highly actionable, prioritized interventions formatted for municipal dispatch teams.
 
-### 8. Broadcasting
-Processed events are stored in `EventStore` and broadcast via **Server-Sent Events (SSE)** to all connected clients (`/api/events/stream`).
+### 8. Field Worker Resolution & AI Verification Workflow
+- **Dispatch:** Admins assign field workers to specific events.
+- **Resolution Proof:** The assigned worker resolves the incident on the ground and uploads an "after" photo as proof of cleanup via the Worker Panel.
+- **AI Fraud Detection:** The Municipal Admin can invoke the AI Verification tool. Gemini Vision natively compares the original "before" image and the worker's "after" image to strictly verify whether both images are of the *exact same location*, preventing fraudulent proof submissions.
+- **Approval:** Once satisfied, the Admin approves the incident, updating its status to "Resolved".
+
+### 9. Data Persistence & Broadcasting
+Processed events are stored persistently in **Google Firebase Firestore** to guarantee long-term data retention for the "My Complaints" tracking lifecycle. In parallel, live events are cached in `EventStore` and broadcast via **Server-Sent Events (SSE)** to all connected clients (`/api/events/stream`).
 
 ---
 
@@ -111,28 +117,37 @@ The system handles non-English input natively:
 ```
 server/
 ├── index.js           Express app, SSE setup, processTweet orchestrator, REST routes
-├── nlpPipeline.js     NER engine: classifyPollution, relevancy noise filter
-├── imageAnalysis.js   Gemini 3.5 Flash prompts for Image and Video multi-frame analysis
-├── geocoder.js        50+ Guwahati localities, geocodeBest with confidence ranking
-├── eventStore.js      In-memory ring buffer for events
-├── sensorGrid.js      Live CPCB AQI ingestion + virtual pressure fusion
-├── hotspotEngine.js   Spatial clustering for localized pollution intensity
-├── predictionEngine.js 24-hour deterministic AQI forecasting
-├── municipalEngine.js Gemini-powered action briefs for municipal response
-├── weatherService.js  Open-Meteo API proxy
-├── translator.js      Google Translate wrapper (auto-detect → English)
+├── config/
+│   └── firebaseAdmin.js Firebase initialization and credentials setup
+├── models/
+│   └── firestoreEventStore.js In-memory buffer synced seamlessly with Firestore
+├── controllers/
+│   ├── citizenController.js Citizen report submissions and feedback handling
+│   ├── municipalityController.js Admin dispatching and AI Verification routes
+│   └── workerController.js Worker assignments and resolution proof uploads
+├── services/
+│   ├── nlpPipeline.js     NER engine: classifyPollution, relevancy noise filter
+│   ├── imageAnalysis.js   Gemini prompts for Image/Video analysis AND AI image comparison
+│   ├── geocoder.js        50+ Guwahati localities, geocodeBest with confidence ranking
+│   ├── eventStore.js      (Legacy) Replaced by firestoreEventStore.js
+│   ├── sensorGrid.js      Live CPCB AQI ingestion + virtual pressure fusion
+│   ├── hotspotEngine.js   Spatial clustering for localized pollution intensity
+│   ├── predictionEngine.js 24-hour deterministic AQI forecasting
+│   ├── municipalEngine.js Gemini-powered action briefs for municipal response
+│   ├── weatherService.js  Open-Meteo API proxy
+│   └── translator.js      Google Translate wrapper (auto-detect → English)
 └── fakeData.js        120 realistic pollution templates + decoys
 
 src/
 ├── App.jsx            Root shell, global state, SSE listener, theme control
 ├── index.css          Design system tokens (glassmorphism, animations)
-├── utils/api.js       API client, POLLUTION_TYPES config
+├── utils/api.js       API client wrappers for all backend services
 └── components/
     ├── LiveMap.jsx     MapLibre + Arenarium integration, hotspots, forecasts
-    ├── TweetFeed.jsx   Collapsible feed, TweetCard with translate toggle
+    ├── ReportFeed.jsx  Collapsible feed, TweetCard with translate toggle
     ├── AddTweetModal   Citizen report form (text/image/video upload)
-    ├── HotspotPanel    Ranked list of spatial clusters
     ├── PredictionPanel 24h AQI sparkline charts and explainability tags
-    ├── MunicipalPanel  Command Center (AI action briefs & dispatch UI)
+    ├── MunicipalPanel  Command Center (Admin dispatch & AI fraud check)
+    ├── WorkerPanel     Worker task dashboard for submitting resolution proofs
     └── Navbar          Theme toggle, live pulse indicator, report button
 ```

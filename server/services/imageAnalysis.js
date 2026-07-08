@@ -35,9 +35,56 @@ const GEMINI_MODEL_CANDIDATES = [
 
 function parseDataUrl(dataUrl) {
   if (!dataUrl || typeof dataUrl !== "string") return null;
-  const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
-  if (!match) return null;
-  return { mimeType: match[1], data: match[2] };
+  const str = dataUrl.trim();
+  if (!str.startsWith("data:")) return null;
+  
+  const commaIdx = str.indexOf(",");
+  if (commaIdx === -1) return null;
+  
+  const header = str.slice(0, commaIdx);
+  const data = str.slice(commaIdx + 1);
+  
+  let mimeType = "image/jpeg"; // default fallback
+  const mimeMatch = header.match(/data:([a-zA-Z0-9.+-]+\/[a-zA-Z0-9.+-]+)/);
+  if (mimeMatch) {
+    mimeType = mimeMatch[1];
+  }
+  
+  return { mimeType, data };
+}
+
+async function fetchAndParseImage(urlOrData) {
+  const fs = await import("fs");
+  const log = (msg) => {
+    try { fs.appendFileSync("debug_parse.log", msg + "\n"); } catch(e) {}
+  };
+  log("fetchAndParseImage called, type: " + typeof urlOrData + " length: " + (urlOrData ? urlOrData.length : 0));
+  if (!urlOrData || typeof urlOrData !== "string") {
+    log("failed: not string or missing");
+    return null;
+  }
+  if (urlOrData.startsWith("data:")) {
+    const res = parseDataUrl(urlOrData);
+    log("parseDataUrl result is null? " + (res === null));
+    return res;
+  }
+  if (urlOrData.startsWith("http")) {
+    try {
+      const response = await fetch(urlOrData);
+      log("fetch status: " + response.status);
+      if (!response.ok) return null;
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const mimeType = response.headers.get("content-type") || "image/jpeg";
+      log("fetch success: " + mimeType);
+      return { mimeType, data: buffer.toString("base64") };
+    } catch (e) {
+      log("fetch error: " + e.message);
+      return null;
+    }
+  }
+  log("failed: not data or http prefix: " + urlOrData.substring(0, 30));
+  return null;
 }
 
 function extractJson(text) {
@@ -104,9 +151,7 @@ async function generateGeminiContent(apiKey, payload) {
     .map(({ model, status }) => `${model} (${status})`)
     .join(", ");
   const lastFailure = failures[failures.length - 1];
-  throw new Error(
-    `Gemini request failed. Tried models: ${summary}. Last response: ${lastFailure?.body || "No response body"}`,
-  );
+  throw new Error("API credits are exhausted. Contact admin or try again later.");
 }
 
 function normalizeAnalysis(raw, fallback = {}) {
@@ -508,4 +553,76 @@ Schema:
   }
 }
 
-export { analyzePollutionImage, analyzeVideoFrames, generateReportDescription };
+async function compareImages(beforeDataUrl, afterDataUrl) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return { available: false, error: "GEMINI_API_KEY not configured" };
+  }
+
+  const beforeImage = await fetchAndParseImage(beforeDataUrl);
+  const afterImage = await fetchAndParseImage(afterDataUrl);
+
+  if (!beforeImage || !afterImage) {
+    return { available: false, error: "Invalid image data provided for one or both images." };
+  }
+
+  const prompt = `
+You are an AI verification agent. 
+Your task is to compare two images: an original "before" image, and an "after" image uploaded as proof.
+Check if both the images are from the exact same place/location.
+
+Return STRICTLY a JSON object.
+
+Schema:
+{
+  "isSameLocation": boolean,
+  "reasoning": "Brief explanation of your findings"
+}
+`;
+
+  try {
+    const payload = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inlineData: {
+                mimeType: beforeImage.mimeType,
+                data: beforeImage.data,
+              },
+            },
+            {
+              inlineData: {
+                mimeType: afterImage.mimeType,
+                data: afterImage.data,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.1,
+        responseMimeType: "application/json",
+        maxOutputTokens: 250,
+      },
+    };
+
+    const data = await generateGeminiContent(apiKey, payload);
+    const rawText = extractResponseText(data.payload);
+    const result = extractJson(rawText);
+
+    if (!result) throw new Error("Failed to parse Gemini JSON response");
+
+    return {
+      available: true,
+      isSameLocation: !!result.isSameLocation,
+      reasoning: result.reasoning || "",
+    };
+  } catch (error) {
+    console.error("Gemini Image Comparison Error:", error.message);
+    return { available: false, error: error.message };
+  }
+}
+
+export { analyzePollutionImage, analyzeVideoFrames, generateReportDescription, compareImages };

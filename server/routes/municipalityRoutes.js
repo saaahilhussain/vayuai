@@ -9,6 +9,7 @@ import {
   updateWorkerStatus,
   getDashboard,
   deleteWorkerTeam,
+  verifyResolutionAI,
 } from "../controllers/municipalityController.js";
 
 const router = express.Router();
@@ -22,6 +23,7 @@ router.get("/workers", listWorkers);
 router.patch("/workers/:uid/status", updateWorkerStatus);
 router.patch("/events/:id/status", updateEventStatus);
 router.patch("/events/:id/assign", assignWorker);
+router.post("/events/:id/verify-ai", verifyResolutionAI);
 router.delete("/events/:id", deleteEvent);
 router.delete("/workers/:uid/teams/:teamId", deleteWorkerTeam);
 

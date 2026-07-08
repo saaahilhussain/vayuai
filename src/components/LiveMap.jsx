@@ -459,8 +459,18 @@ export default function LiveMap({
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const tokenMissing = !apiKey || apiKey === "your_token_here";
 
-  // Fetch sensor data periodically when sensors are active
+  const [mapError, setMapError] = useState(false);
+
   useEffect(() => {
+    window.gm_authFailure = () => {
+      window.isGoogleMapsAuthFailed = true;
+      window.dispatchEvent(new Event("gm_authFailure"));
+    };
+    
+    const checkError = () => setMapError(true);
+    window.addEventListener("gm_authFailure", checkError);
+    if (window.isGoogleMapsAuthFailed) setMapError(true);
+
     if (!sensorsActive) return;
     let cancelled = false;
     const load = () => {
@@ -470,7 +480,11 @@ export default function LiveMap({
     };
     load();
     const interval = setInterval(load, 30000); // refresh every 30s
-    return () => { cancelled = true; clearInterval(interval); };
+    return () => { 
+      window.removeEventListener("gm_authFailure", checkError);
+      cancelled = true; 
+      clearInterval(interval); 
+    };
   }, [sensorsActive]);
 
   useEffect(() => {
@@ -483,7 +497,7 @@ export default function LiveMap({
     }
   }, [selectedEvent]);
 
-  if (tokenMissing) {
+  if (tokenMissing || mapError) {
     return (
       <div className="livemap-container">
         <div
@@ -497,11 +511,16 @@ export default function LiveMap({
             color: "white",
             padding: "20px",
             borderRadius: "8px",
-            zIndex: 1000,
+            zIndex: 10,
             textAlign: "center",
           }}
         >
-          <p>Set VITE_GOOGLE_MAPS_API_KEY in a .env file to load the map.</p>
+          <p>
+            {mapError 
+              ? "API credits are exhausted. Contact admin or try again later."
+              : "Set VITE_GOOGLE_MAPS_API_KEY in a .env file to load the map."
+            }
+          </p>
         </div>
       </div>
     );

@@ -76,9 +76,7 @@ async function generateGeminiContent(apiKey, payload) {
     .map(({ model, status }) => `${model} (${status})`)
     .join(", ");
   const lastFailure = failures[failures.length - 1];
-  throw new Error(
-    `Gemini request failed. Tried models: ${summary}. Last response: ${lastFailure?.body || "No response body"}`,
-  );
+  throw new Error("API credits are exhausted. Contact admin or try again later.");
 }
 
 class MunicipalEngine {

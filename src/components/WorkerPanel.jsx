@@ -48,6 +48,14 @@ export default function WorkerPanel({
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [globalEvents, setGlobalEvents] = useState([]);
+  const [mapError, setMapError] = useState(false);
+
+  useEffect(() => {
+    const checkError = () => setMapError(true);
+    window.addEventListener("gm_authFailure", checkError);
+    if (window.isGoogleMapsAuthFailed) setMapError(true);
+    return () => window.removeEventListener("gm_authFailure", checkError);
+  }, []);
 
   const loadGlobalFeed = useCallback(async () => {
     try {
@@ -432,26 +440,45 @@ export default function WorkerPanel({
     return (
       <div className="mdl-tab-content" style={{ height: "calc(100vh - 40px)" }}>
         <h2 className="mdl-page-title">Nearby Hotspots & Tasks</h2>
-        <div style={{ height: 'calc(100% - 60px)', width: '100%', borderRadius: '8px', overflow: 'hidden' }}>
-          <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
-            <Map
-              defaultZoom={defaultZoom}
-              defaultCenter={defaultCenter}
-              mapId="worker-hotspot-map"
-              disableDefaultUI={true}
+        <div style={{ height: 'calc(100% - 60px)', width: '100%', borderRadius: '8px', overflow: 'hidden', position: 'relative' }}>
+          {mapError ? (
+            <div
+              style={{
+                position: "absolute",
+                top: 0, left: 0, right: 0, bottom: 0,
+                background: "rgba(0,0,0,0.8)",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 10,
+                textAlign: "center",
+                padding: "20px"
+              }}
             >
-            {hotspots.map((h, i) => (
-              <AdvancedMarker key={i} position={{ lat: h.lat, lng: h.lng }}>
-                <Pin background="#ef4444" borderColor="#7f1d1d" glyphColor="#7f1d1d" />
-              </AdvancedMarker>
-            ))}
-            {filteredEvents.map(e => e.lat && e.lng && (
-              <AdvancedMarker key={e.id} position={{ lat: e.lat, lng: e.lng }}>
-                <Pin background="#3b82f6" borderColor="#1e3a8a" glyphColor="#1e3a8a" />
-              </AdvancedMarker>
-            ))}
-          </Map>
-        </APIProvider>
+              <p>API credits are exhausted. Contact admin or try again later.</p>
+            </div>
+          ) : (
+            <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
+              <Map
+                defaultZoom={defaultZoom}
+                defaultCenter={defaultCenter}
+                mapId="worker-hotspot-map"
+                disableDefaultUI={true}
+              >
+              {hotspots.map((h, i) => (
+                <AdvancedMarker key={i} position={{ lat: h.lat, lng: h.lng }}>
+                  <Pin background="#ef4444" borderColor="#7f1d1d" glyphColor="#7f1d1d" />
+                </AdvancedMarker>
+              ))}
+              {filteredEvents.map(e => e.lat && e.lng && (
+                <AdvancedMarker key={e.id} position={{ lat: e.lat, lng: e.lng }}>
+                  <Pin background="#3b82f6" borderColor="#1e3a8a" glyphColor="#1e3a8a" />
+                </AdvancedMarker>
+              ))}
+            </Map>
+          </APIProvider>
+          )}
         <div style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.8rem', color: '#9ca3af' }}>
           <span style={{ color: '#ef4444' }}>🔥 Hotspots</span> | <span style={{ color: '#3b82f6' }}>📋 My Tasks</span>
         </div>

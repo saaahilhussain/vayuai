@@ -106,17 +106,18 @@ export default function SubmitProofModal({ isOpen, onClose, onSubmit }) {
         <form onSubmit={handleSubmit} className="modal-form" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div className="form-group">
             <label>Photo/Video Evidence</label>
-            <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-              <div style={{ flex: '1', minWidth: '200px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div style={{ width: '100%' }}>
                 <span style={{ fontSize: '0.85em', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>📁 Upload File</span>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleImageChange}
                   disabled={status === "loading"}
+                  style={{ width: '100%', boxSizing: 'border-box' }}
                 />
               </div>
-              <div style={{ flex: '1', minWidth: '200px' }}>
+              <div style={{ width: '100%' }}>
                 <span style={{ fontSize: '0.85em', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>📸 Capture with Camera</span>
                 <button
                   type="button"
