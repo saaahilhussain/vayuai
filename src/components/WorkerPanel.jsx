@@ -43,6 +43,7 @@ export default function WorkerPanel({
   const [editMobile, setEditMobile] = useState("");
   const [editOfficeAddress, setEditOfficeAddress] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const loadAssignments = useCallback(async () => {
     if (!currentUser) return;
@@ -116,6 +117,18 @@ export default function WorkerPanel({
       alert("Team saved successfully!");
     } catch(err) {
       alert("Failed to save team: " + err.message);
+    }
+  };
+
+  const deleteTeam = async (teamId) => {
+    try {
+      let currentTeams = profile?.teams || [];
+      const newTeams = currentTeams.filter(t => t.id !== teamId);
+      const updated = await updateWorkerProfile(currentUser, { teams: newTeams });
+      setProfile(prev => ({ ...prev, teams: updated.profile.teams }));
+      setConfirmDeleteId(null);
+    } catch (err) {
+      alert("Failed to delete team: " + err.message);
     }
   };
 
@@ -274,6 +287,7 @@ export default function WorkerPanel({
               const statusCfg = STATUS_CONFIG[event.status] || STATUS_CONFIG.assigned;
               const pollCfg = POLLUTION_TYPES[event.pollutionType] || POLLUTION_TYPES.other;
               const isActing = actionLoading === event.id;
+              const assignedTeam = profile?.teams?.find(t => t.id === event.assignedTeamId);
 
               return (
                 <div
@@ -287,7 +301,14 @@ export default function WorkerPanel({
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: "8px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                         <span>{pollCfg.icon}</span>
-                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0" }}>{pollCfg.label}</span>
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <span style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0" }}>{pollCfg.label}</span>
+                          {assignedTeam && (
+                            <span style={{ fontSize: "11px", color: "#9ca3af", fontWeight: 500 }}>
+                              Assigned to: {assignedTeam.teamName || "Team"}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <span
                         className="mp-status-badge"
@@ -535,14 +556,37 @@ export default function WorkerPanel({
       ) : profile && profile.teams && profile.teams.length > 0 ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '20px' }}>
           {profile.teams.map((team) => (
-            <div key={team.id} style={{ background: '#1e293b', padding: '24px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
-              <button
-                className="mp-btn mp-btn-secondary"
-                style={{ position: 'absolute', top: '24px', right: '24px' }}
-                onClick={() => startEditing(team)}
-              >
-                ✏️ Edit
-              </button>
+            <div key={team.id} style={{ background: '#1e293b', padding: '24px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative', overflow: 'hidden' }}>
+              {confirmDeleteId === team.id && (
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                  <h3 style={{ margin: '0 0 16px 0', color: '#f8fafc', fontSize: '1.2rem' }}>Delete this team?</h3>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button className="mp-btn mp-btn-danger" onClick={() => deleteTeam(team.id)}>Yes, Delete</button>
+                    <button className="mp-btn mp-btn-secondary" onClick={() => setConfirmDeleteId(null)}>Cancel</button>
+                  </div>
+                </div>
+              )}
+              <div style={{ position: 'absolute', top: '24px', right: '24px', display: 'flex', gap: '8px' }}>
+                <button
+                  className="mp-btn mp-btn-secondary"
+                  onClick={() => startEditing(team)}
+                >
+                  ✏️ Edit
+                </button>
+                <button
+                  className="mp-btn mp-btn-danger"
+                  onClick={() => setConfirmDeleteId(team.id)}
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#fca5a5',
+                    padding: '8px 12px'
+                  }}
+                  title="Delete Team"
+                >
+                  🗑️
+                </button>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 <div style={{ gridColumn: 'span 2' }}>
                   <p style={{ margin: '0 0 5px 0', color: '#9ca3af', fontSize: '12px', textTransform: 'uppercase' }}>Team Name</p>

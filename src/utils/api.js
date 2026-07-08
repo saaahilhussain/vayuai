@@ -184,12 +184,12 @@ export async function updateEventStatus(user, eventId, status) {
   return res.json();
 }
 
-export async function assignEventWorker(user, eventId, workerUid) {
+export async function assignEventWorker(user, eventId, workerUid, teamId) {
   const headers = await authHeaders(user);
   const res = await fetch(`${API_BASE}/municipality/events/${eventId}/assign`, {
     method: 'PATCH',
     headers,
-    body: JSON.stringify({ workerUid }),
+    body: JSON.stringify({ workerUid, teamId }),
   });
   if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
@@ -208,6 +208,16 @@ export async function deleteEventById(user, eventId) {
 export async function fetchWorkers(user) {
   const headers = await authHeaders(user);
   const res = await fetch(`${API_BASE}/municipality/workers`, { headers });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function deleteWorkerTeam(user, workerUid, teamId) {
+  const headers = await authHeaders(user);
+  const res = await fetch(`${API_BASE}/municipality/workers/${workerUid}/teams/${teamId}`, {
+    method: 'DELETE',
+    headers,
+  });
   if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }
@@ -253,7 +263,7 @@ export async function fetchWorkerAssignments(user) {
 
 export async function fetchWorkerProfile(user) {
   const headers = await authHeaders(user);
-  const res = await fetch(`${API_BASE}/worker/profile`, { headers });
+  const res = await fetch(`${API_BASE}/worker/profile?_t=${Date.now()}`, { headers });
   if (!res.ok) throw new Error((await res.json()).error);
   return res.json();
 }

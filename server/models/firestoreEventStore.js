@@ -364,17 +364,19 @@ class FirestoreEventStore {
     return event;
   }
 
-  async assignWorker(eventId, workerUid) {
+  async assignWorker(eventId, workerUid, teamId) {
     const event = this.getById(eventId);
     if (!event) return null;
 
     event.assignedTo = workerUid;
+    event.assignedTeamId = teamId || null;
     event.status = "in_progress";
     event.assignedAt = new Date().toISOString();
 
     if (event.firestoreId) {
       await adminDb.collection(COLLECTION).doc(event.firestoreId).update({
         assignedTo: workerUid,
+        assignedTeamId: event.assignedTeamId,
         status: "in_progress",
         assignedAt: event.assignedAt,
       });

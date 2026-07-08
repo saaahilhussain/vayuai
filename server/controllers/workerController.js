@@ -142,7 +142,7 @@ export async function getProfile(req, res) {
     
     // Support multiple teams, fallback to legacy fields if 'teams' is missing
     let teams = data.teams;
-    if (!teams || teams.length === 0) {
+    if (teams === undefined) {
       teams = [{
         id: "team_1", // Default ID for the legacy team
         teamName: data.teamName || data.name || "",
