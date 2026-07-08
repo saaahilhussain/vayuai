@@ -2,6 +2,7 @@
 
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import path from "path";
 import { fileURLToPath } from "url";
 import apiRoutes from "./routes/api.js";
@@ -14,7 +15,8 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
+app.use(cookieParser(process.env.COOKIE_SECRET || "default_secret"));
 app.use(express.json({ limit: "8mb" }));
 
 // Mount API routes

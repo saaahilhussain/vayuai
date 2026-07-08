@@ -1,34 +1,43 @@
 import { adminAuth, adminDb } from "../config/firebaseAdmin.js";
 
 /**
- * Middleware to verify Firebase ID tokens.
- * Extracts token from 'Authorization: Bearer <token>'
+ * Middleware to verify Firebase Session Cookies.
+ * Extracts session from req.signedCookies based on 'X-Active-Role' header.
  */
 export async function verifyToken(req, res, next) {
-  const authHeader = req.headers.authorization;
+  const activeRole = req.headers["x-active-role"];
   
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized: No token provided" });
+  if (!activeRole) {
+    return res.status(401).json({ error: "Unauthorized: No X-Active-Role header provided" });
   }
 
-  const idToken = authHeader.split("Bearer ")[1];
+  const sessionCookie = req.signedCookies[`session_${activeRole}`];
+
+  if (!sessionCookie) {
+    return res.status(401).json({ error: `Unauthorized: No active session found for role ${activeRole}` });
+  }
 
   try {
-    const decodedToken = await adminAuth.verifyIdToken(idToken);
-    req.user = decodedToken;
+    const decodedClaims = await adminAuth.verifySessionCookie(sessionCookie, true);
+    req.user = decodedClaims;
     
     // Fetch user role from Firestore to attach to req.user
-    const userDoc = await adminDb.collection("users").doc(decodedToken.uid).get();
+    const userDoc = await adminDb.collection("users").doc(decodedClaims.uid).get();
     if (userDoc.exists) {
       req.user.role = userDoc.data().role || "citizen";
     } else {
       req.user.role = "citizen";
     }
     
+    // Safety check: ensure the cookie role matches the actual DB role
+    if (req.user.role !== activeRole) {
+      return res.status(403).json({ error: "Forbidden: Session role mismatch" });
+    }
+
     next();
   } catch (error) {
-    console.error("Error verifying Firebase ID token:", error);
-    return res.status(403).json({ error: "Unauthorized: Invalid or expired token" });
+    console.error("Error verifying Firebase Session Cookie:", error);
+    return res.status(403).json({ error: "Unauthorized: Invalid or expired session cookie" });
   }
 }
 
