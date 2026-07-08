@@ -12,12 +12,15 @@ const __dirname = dirname(__filename);
 let app;
 try {
   if (getApps().length === 0) {
-    const serviceAccountPath = join(__dirname, "serviceAccountKey.json");
+    const localPath = join(__dirname, "serviceAccountKey.json");
+    const renderPath = "/etc/secrets/serviceAccountKey.json";
+    
+    const serviceAccountPath = existsSync(localPath) ? localPath : (existsSync(renderPath) ? renderPath : null);
 
-    if (existsSync(serviceAccountPath)) {
+    if (serviceAccountPath) {
       const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, "utf-8"));
       app = initializeApp({ credential: cert(serviceAccount) });
-      console.log("🔥 Firebase Admin SDK initialized (serviceAccountKey.json)");
+      console.log(`🔥 Firebase Admin SDK initialized (${serviceAccountPath})`);
     } else {
       app = initializeApp({
         credential: cert({
