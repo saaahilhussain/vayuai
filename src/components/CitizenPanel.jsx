@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import "./WorkerPanel.css"; // Reuse styling where possible
+import "./MunicipalPanel.css"; // Use mp-* classes for cards
 import { useAuth } from "../context/AuthContext";
 import { POLLUTION_TYPES, timeAgo, fetchCitizenEvents, submitEventFeedback, deleteCitizenEvent } from "../utils/api";
 
@@ -21,37 +22,24 @@ const EMOJI_SCALE = [
   { rating: "excellent", emoji: "🤩", label: "Excellent" },
 ];
 
-export default function CitizenPanel({ onClose }) {
+export default function CitizenPanel({ onClose, globalEvents = [] }) {
   const { currentUser } = useAuth();
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [feedbackLoading, setFeedbackLoading] = useState(null);
   const [deletingEventId, setDeletingEventId] = useState(null);
 
-  const loadEvents = useCallback(async () => {
-    if (!currentUser) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchCitizenEvents(currentUser);
-      setEvents(data.events || []);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [currentUser]);
-
-  useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
+  // Derive citizen events reactively from the live globalEvents array
+  const events = globalEvents.filter(e => 
+    e.citizenUid === currentUser?.uid || 
+    (e.corroboratingCitizenUids && e.corroboratingCitizenUids.includes(currentUser?.uid))
+  ).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
   const handleFeedback = async (eventId, rating) => {
     setFeedbackLoading(eventId);
     try {
       await submitEventFeedback(currentUser, eventId, rating);
-      await loadEvents();
+      // Removed loadEvents; SSE will push the update automatically.
     } catch (err) {
       alert(`Feedback failed: ${err.message}`);
     } finally {
@@ -67,7 +55,7 @@ export default function CitizenPanel({ onClose }) {
     if (!deletingEventId) return;
     try {
       await deleteCitizenEvent(currentUser, deletingEventId);
-      await loadEvents();
+      // Removed loadEvents; SSE will push the deletion (or we wait for re-render if backend doesn't emit delete).
       setDeletingEventId(null);
     } catch (err) {
       alert(`Delete failed: ${err.message}`);
@@ -103,98 +91,101 @@ export default function CitizenPanel({ onClose }) {
         <button className="wp-close-btn" onClick={onClose}>×</button>
       </div>
 
-      <div className="wp-filter-tabs">
-        <button className="wp-refresh-btn" onClick={loadEvents} title="Refresh">
-          ↻
-        </button>
-      </div>
 
-      <div className="wp-content">
+
+      <div className="wp-content" style={{ padding: '20px' }}>
         {loading && (
-          <div className="wp-loading">
-            <div className="wp-spinner"></div>
+          <div className="mp-loading">
+            <div className="mp-spinner"></div>
             <span>Loading your complaints...</span>
           </div>
         )}
 
         {!loading && error && (
-          <div className="wp-empty">Error: {error}</div>
+          <div className="mp-empty">Error: {error}</div>
         )}
 
         {!loading && !error && events.length === 0 && (
-          <div className="wp-empty">
+          <div className="mp-empty">
             You haven't reported any pollution incidents yet.
           </div>
         )}
 
         {!loading && !error && events.length > 0 && (
-          <div className="wp-list">
+          <div className="mp-list">
             {events.map((event) => {
               const statusCfg = STATUS_CONFIG[event.status] || STATUS_CONFIG.pending_review;
               const pollCfg = POLLUTION_TYPES[event.pollutionType] || POLLUTION_TYPES.other;
               const isFeedbacking = feedbackLoading === event.id;
 
               return (
-                <div key={event.id} className={`wp-card severity-${event.severity || 'low'}`}>
-                  <div className="wp-card-strip"></div>
-                  <div className="wp-card-header">
-                    <div className="wp-card-type">
-                      <span>{pollCfg.icon}</span>
-                      <span className="wp-card-type-label">{pollCfg.label}</span>
+                <div key={event.id} className={`mp-card mp-event-card severity-${event.severity || 'low'}`}>
+                  <div className="mp-priority-strip"></div>
+                  
+                  {/* Header */}
+                  <div style={{ padding: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingLeft: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>{pollCfg.icon}</span>
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          <span style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0" }}>{pollCfg.label}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <span
+                          className="mp-status-badge"
+                          style={{
+                            background: `${statusCfg.color}22`,
+                            color: statusCfg.color,
+                          }}
+                        >
+                          {statusCfg.icon} {statusCfg.label}
+                        </span>
+                        <button 
+                          onClick={() => handleDelete(event.id)}
+                          title="Delete Complaint"
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                            color: '#ef4444',
+                            cursor: 'pointer',
+                            padding: '4px 8px',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            transition: 'all 0.2s ease',
+                            fontSize: '14px'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'}
+                          onMouseOut={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <span
-                        className="wp-status-badge"
-                        style={{
-                          background: `${statusCfg.color}22`,
-                          color: statusCfg.color,
-                        }}
-                      >
-                        {statusCfg.icon} {statusCfg.label}
-                      </span>
-                      <button 
-                        onClick={() => handleDelete(event.id)}
-                        title="Delete Complaint"
-                        style={{
-                          background: 'rgba(239, 68, 68, 0.1)',
-                          border: '1px solid rgba(239, 68, 68, 0.2)',
-                          color: '#ef4444',
-                          cursor: 'pointer',
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          transition: 'all 0.2s ease',
-                          fontSize: '14px'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'}
-                        onMouseOut={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  </div>
 
-                  <div className="wp-card-details">
-                    <div className="wp-card-location">
-                      📍 {event.locationName || "Unknown"}
-                    </div>
-                    <div className="wp-card-meta">
-                      <span>{timeAgo(event.timestamp)}</span>
-                      {event.severity && (
-                        <>
-                          <span>•</span>
-                          <span className="wp-severity-tag">{event.severity}</span>
-                        </>
+                    {/* Details */}
+                    <div style={{ paddingLeft: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <div style={{ fontSize: "12px", color: "#4ade80", fontWeight: 600 }}>
+                        📍 {event.locationName || "Unknown"}
+                      </div>
+                      <div style={{ display: "flex", gap: "6px", fontSize: "11px", color: "#64748b", alignItems: "center" }}>
+                        <span>{timeAgo(event.timestamp)}</span>
+                        {event.severity && (
+                          <>
+                            <span>•</span>
+                            <span style={{ textTransform: "uppercase", fontWeight: 600, fontSize: "10px" }}>{event.severity}</span>
+                          </>
+                        )}
+                      </div>
+                      {event.text && (
+                        <div style={{ fontSize: "12px", color: "#94a3b8", lineHeight: 1.4, marginTop: "2px" }}>
+                          {event.text.substring(0, 140)}
+                          {event.text.length > 140 ? "..." : ""}
+                        </div>
                       )}
                     </div>
-                    {event.text && (
-                      <div className="wp-card-text">
-                        {event.text.substring(0, 140)}
-                        {event.text.length > 140 ? "..." : ""}
-                      </div>
-                    )}
                   </div>
 
                   {event.status === "resolved" && (
@@ -235,8 +226,8 @@ export default function CitizenPanel({ onClose }) {
                   )}
 
                   {isFeedbacking && (
-                    <div className="wp-action-overlay">
-                      <div className="wp-spinner wp-spinner-sm"></div>
+                    <div className="mp-action-overlay">
+                      <div className="mp-spinner mp-spinner-sm"></div>
                     </div>
                   )}
                 </div>

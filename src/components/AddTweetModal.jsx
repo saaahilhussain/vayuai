@@ -258,8 +258,12 @@ function AddTweetModalContent({
             setSuggestions(predictions.map(p => p.description));
             setShowSuggestions(true);
           } else {
-            setSuggestions([]);
-            setShowSuggestions(false);
+            // Fallback if API fails
+            const filtered = allLocations.filter((loc) =>
+              loc.toLowerCase().includes(val.toLowerCase()),
+            );
+            setSuggestions(filtered);
+            setShowSuggestions(filtered.length > 0);
           }
         });
       } else {
@@ -267,16 +271,77 @@ function AddTweetModalContent({
           loc.toLowerCase().includes(val.toLowerCase()),
         );
         setSuggestions(filtered);
-        setShowSuggestions(true);
+        setShowSuggestions(filtered.length > 0);
       }
     } else {
       setShowSuggestions(false);
     }
   };
 
-  const handleSelectSuggestion = (sug) => {
+  const handleSelectSuggestion = async (sug) => {
     setLocation(sug);
     setShowSuggestions(false);
+    
+    let geocoder = geocoderService;
+    if (!geocoder && window.google?.maps?.Geocoder) {
+      geocoder = new window.google.maps.Geocoder();
+    }
+    
+    let googleSuccess = false;
+    if (geocoder) {
+      try {
+        const response = await new Promise((resolve, reject) => {
+          geocoder.geocode({ address: sug }, (results, status) => {
+            if (status === "OK") resolve({ results });
+            else reject(new Error(status));
+          });
+        });
+        if (response.results && response.results.length > 0) {
+          const result = response.results[0];
+          
+          const street = result.formatted_address.split(',')[0];
+          setLocation(street); 
+          
+          if (result.geometry?.location) {
+            setLocationCoords({
+              lat: result.geometry.location.lat(),
+              lng: result.geometry.location.lng()
+            });
+            setLocationStatus("detected");
+          }
+          googleSuccess = true;
+        }
+      } catch (e) {
+        console.warn("Google Geocoding from suggestion failed, trying OSM...");
+      }
+    }
+    
+    if (!googleSuccess) {
+      // Fallback to OSM Nominatim
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(sug + ', India')}&format=json&addressdetails=1&limit=1`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.length > 0) {
+            const place = data[0];
+            const { road, neighbourhood, suburb } = place.address || {};
+            
+            const street = road || neighbourhood || suburb || place.display_name.split(',')[0];
+            setLocation(street); 
+            
+            if (place.lat && place.lon) {
+              setLocationCoords({
+                lat: parseFloat(place.lat),
+                lng: parseFloat(place.lon)
+              });
+              setLocationStatus("detected");
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("OSM Geocoding failed:", e);
+      }
+    }
   };
 
   const toggleRecording = async () => {
@@ -585,6 +650,13 @@ function AddTweetModalContent({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!hasReportInput) return;
+    
+    if (!text.trim() && !audioDataUrl) {
+      setStatus("error");
+      setMessage("Please write a description for your report or use the ✨ AI Write button.");
+      return;
+    }
+
     if (!location.trim() && !locationCoords) {
       setStatus("error");
       setMessage(
@@ -636,11 +708,7 @@ function AddTweetModalContent({
       if (response.accepted) {
         setStatus("success");
         const vision = response.event?.imageAnalysis;
-        setMessage(
-          vision?.available
-            ? `Report submitted. Gemini detected ${vision.pollutionType.replaceAll("_", " ")} (${Math.round(vision.confidence * 100)}%).`
-            : "Report submitted and verified!",
-        );
+        setMessage("Your report is successfully submitted");
         setTimeout(() => {
           onClose();
         }, 1500);
@@ -720,8 +788,18 @@ function AddTweetModalContent({
               placeholder="City" 
               disabled={status === "loading"} 
               style={{ flex: '1 1 120px', boxSizing: 'border-box' }} 
+              list="city-suggestions"
               required
             />
+            <datalist id="city-suggestions">
+              <option value="Guwahati" />
+              <option value="Dispur" />
+              <option value="Dibrugarh" />
+              <option value="Silchar" />
+              <option value="Jorhat" />
+              <option value="Nagaon" />
+            </datalist>
+
             <input 
               type="text" 
               value={pincode} 
@@ -729,8 +807,11 @@ function AddTweetModalContent({
               placeholder="Pincode" 
               disabled={status === "loading"} 
               style={{ flex: '1 1 100px', boxSizing: 'border-box' }} 
+              maxLength="6"
+              pattern="\d{6}"
               required
             />
+
             <input 
               type="text" 
               value={state} 
@@ -738,8 +819,18 @@ function AddTweetModalContent({
               placeholder="State" 
               disabled={status === "loading"} 
               style={{ flex: '1 1 120px', boxSizing: 'border-box' }} 
+              list="state-suggestions"
               required
             />
+            <datalist id="state-suggestions">
+              <option value="Assam" />
+              <option value="Meghalaya" />
+              <option value="Arunachal Pradesh" />
+              <option value="Nagaland" />
+              <option value="Manipur" />
+              <option value="Mizoram" />
+              <option value="Tripura" />
+            </datalist>
           </div>
 
           <div className="form-group">
@@ -806,6 +897,8 @@ function AddTweetModalContent({
               onChange={(e) => setReportDate(e.target.value)}
               placeholder="DD/MM/YYYY"
               disabled={status === "loading"}
+              min="2026-01-01"
+              max="9999-12-31"
               required
             />
           </div>

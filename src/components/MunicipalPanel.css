@@ -182,6 +182,7 @@
 /* Main Content */
 .mdl-main {
   flex: 1;
+  height: 100%;
   overflow-y: auto;
   background: #0f172a;
   position: relative;

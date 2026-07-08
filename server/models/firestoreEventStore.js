@@ -119,6 +119,15 @@ class FirestoreEventStore {
     if (newEvent.handle && !existing.corroboratedBy.includes(newEvent.handle)) {
       existing.corroboratedBy.push(newEvent.handle);
     }
+    
+    existing.corroboratingCitizenUids = existing.corroboratingCitizenUids || [];
+    if (existing.citizenUid && !existing.corroboratingCitizenUids.includes(existing.citizenUid)) {
+      existing.corroboratingCitizenUids.push(existing.citizenUid);
+    }
+    if (newEvent.citizenUid && !existing.corroboratingCitizenUids.includes(newEvent.citizenUid)) {
+      existing.corroboratingCitizenUids.push(newEvent.citizenUid);
+    }
+
     existing.lastCorroboratedAt = new Date().toISOString();
 
     const severityRank = { low: 1, moderate: 2, high: 3, critical: 4 };

@@ -8,7 +8,8 @@ export default function LiveFeed({ events, onSelectEvent, onClose, isSidebar = f
   const [pullDistance, setPullDistance] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   
-  const sorted = [...events].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const getSortTime = (e) => new Date(e.lastCorroboratedAt || e.lastUpdatedAt || e.timestamp).getTime();
+  const sorted = [...events].sort((a, b) => getSortTime(b) - getSortTime(a));
 
   useEffect(() => {
     if (listRef.current) {
@@ -76,7 +77,7 @@ export default function LiveFeed({ events, onSelectEvent, onClose, isSidebar = f
             <div className="feed-item-header">
               <span className={`feed-item-dot ${event.severity}`} />
               <span className="feed-item-handle">{event.handle}</span>
-              <span className="feed-item-time">{timeAgo(event.timestamp)}</span>
+              <span className="feed-item-time">{timeAgo(event.lastCorroboratedAt || event.lastUpdatedAt || event.timestamp)}</span>
             </div>
             <div className="feed-item-text">{event.text}</div>
             {event.imageUrl && (

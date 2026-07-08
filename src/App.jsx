@@ -99,7 +99,7 @@ export default function App() {
       setEvents(data);
       setDisplayEvents(data);
     });
-  }, []);
+  }, [currentUser]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -470,7 +470,7 @@ export default function App() {
 
       {/* Municipal Panel */}
       {mapOpen && municipalActive && (
-        <MunicipalPanel onClose={() => setMunicipalActive(false)} />
+        <MunicipalPanel onClose={() => setMunicipalActive(false)} globalEvents={events} />
       )}
 
       {/* Worker Panel */}
@@ -480,7 +480,7 @@ export default function App() {
 
       {/* Citizen Panel */}
       {citizenActive && (
-        <CitizenPanel onClose={() => setCitizenActive(false)} />
+        <CitizenPanel onClose={() => setCitizenActive(false)} globalEvents={events} />
       )}
 
       {/* Top right Feed Toggle Button when Map is Open */}

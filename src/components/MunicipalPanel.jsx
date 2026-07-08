@@ -8,6 +8,7 @@ import {
   fetchMunicipalBrief,
   fetchMunicipalDashboard,
   fetchMunicipalEvents,
+  fetchEvents,
   updateEventStatus,
   assignEventWorker,
   deleteEventById,
@@ -77,6 +78,7 @@ export default function MunicipalPanel({
   heatmapSelectedStates = [],
   heatmapStateCounts = {},
   setHeatmapSelectedStates,
+  globalEvents = [],
 }) {
   const { currentUser, userRole } = useAuth();
   const isMunicipal = userRole === "municipality";
@@ -97,7 +99,25 @@ export default function MunicipalPanel({
   // Management state
   const [dashboard, setDashboard] = useState(null);
   const [events, setEvents] = useState([]);
-  const [workers, setWorkers] = useState([]);
+  const [rawWorkers, setRawWorkers] = useState([]);
+  
+  // Dynamically derive workers
+  const workers = rawWorkers.map((w) => ({
+    ...w,
+    teamStrength: w.teamStrength || 1,
+    status:
+      w.manualStatus === "idle"
+        ? "idle"
+        : w.manualStatus === "busy" || events.some(
+              (e) =>
+                e.assignedTo === w.uid &&
+                ["assigned", "worker_en_route", "reached", "in_progress"].includes(e.status)
+            )
+          ? "busy"
+          : "idle",
+    assignedCount: events.filter((e) => e.assignedTo === w.uid && e.assignedTeamId === w.teamId).length,
+  }));
+
   const [statusFilter, setStatusFilter] = useState("");
   const [wardFilter, setWardFilter] = useState("");
   const [teamStatusFilter, setTeamStatusFilter] = useState("");
@@ -123,6 +143,23 @@ export default function MunicipalPanel({
     setActiveTab(tabName);
   };
 
+  const [localGlobalEvents, setLocalGlobalEvents] = useState([]);
+
+  const loadGlobalFeed = useCallback(async () => {
+    try {
+      const data = await fetchEvents();
+      setLocalGlobalEvents(data);
+    } catch (err) {
+      console.error("Failed to load global feed:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "feed") {
+      loadGlobalFeed();
+    }
+  }, [activeTab, loadGlobalFeed]);
+
   // Load AI Brief
   const loadBrief = useCallback(() => {
     setBriefLoading(true);
@@ -145,31 +182,12 @@ export default function MunicipalPanel({
     try {
       const [dashData, eventsData, workersData] = await Promise.all([
         fetchMunicipalDashboard(currentUser),
-        fetchMunicipalEvents(currentUser, {}), // ALWAYS fetch all events so worker status calculates correctly
+        fetchMunicipalEvents(currentUser, { status: statusFilter }),
         fetchWorkers(currentUser),
       ]);
       setDashboard(dashData);
-      setEvents(eventsData.events || []);
-
-      // Map real team strength and calculate assigned status/counts
-      const enrichedWorkers = (workersData.workers || []).map((w) => ({
-        ...w,
-        teamStrength: w.teamStrength || 1,
-        status:
-          w.manualStatus === "idle"
-            ? "idle"
-            : w.manualStatus === "busy" || eventsData.events.some(
-                  (e) =>
-                    e.assignedTo === w.uid &&
-                    e.assignedTeamId === w.teamId &&
-                    !["resolved", "cleanup_done"].includes(e.status),
-                )
-              ? "busy"
-              : "idle",
-        assignedCount: eventsData.events.filter((e) => e.assignedTo === w.uid && e.assignedTeamId === w.teamId)
-          .length,
-      }));
-      setWorkers(enrichedWorkers);
+      setEvents(eventsData?.events || []);
+      setRawWorkers(workersData.workers || []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -249,7 +267,7 @@ export default function MunicipalPanel({
     setActionLoading(`${workerUid}_${teamId}`);
     try {
       await deleteWorkerTeam(currentUser, workerUid, teamId);
-      setWorkers(prev => prev.filter(w => !(w.uid === workerUid && w.teamId === teamId)));
+      setRawWorkers(prev => prev.filter(w => !(w.uid === workerUid && w.teamId === teamId)));
       setConfirmDeleteId(null);
     } catch (err) {
       alert("Failed to delete team: " + err.message);
@@ -1429,12 +1447,12 @@ export default function MunicipalPanel({
         {activeTab === "forecast" && renderForecastTab()}
         {activeTab === "feed" && (
           <LiveFeed
-            events={events}
+            events={localGlobalEvents}
             onSelectEvent={() => {}}
             onClose={() => setActiveTab("dashboard")}
             isSidebar={false}
             isEmbedded={true}
-            onRefresh={loadManagementData}
+            onRefresh={loadGlobalFeed}
           />
         )}
       </div>
