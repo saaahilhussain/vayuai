@@ -139,15 +139,25 @@ export async function getProfile(req, res) {
       return res.status(404).json({ error: "Profile not found" });
     }
     const data = doc.data();
+    
+    // Support multiple teams, fallback to legacy fields if 'teams' is missing
+    let teams = data.teams;
+    if (!teams || teams.length === 0) {
+      teams = [{
+        id: "team_1", // Default ID for the legacy team
+        teamName: data.teamName || data.name || "",
+        workerName: data.workerName || "",
+        gender: data.gender || "",
+        teamStrength: data.teamStrength || 1,
+        govtId: data.govtId || "",
+        mobile: data.mobile || "",
+        officeAddress: data.officeAddress || ""
+      }];
+    }
+
     res.json({
-      teamName: data.teamName || data.name || "",
-      workerName: data.workerName || "",
-      gender: data.gender || "",
-      teamStrength: data.teamStrength || 1,
-      govtId: data.govtId || "",
-      mobile: data.mobile || "",
-      officeAddress: data.officeAddress || "",
-      email: data.email
+      email: data.email,
+      teams: teams
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -158,19 +168,22 @@ export async function getProfile(req, res) {
  * PATCH /api/worker/profile
  */
 export async function updateProfile(req, res) {
-  const { teamName, workerName, gender, teamStrength, govtId, mobile, officeAddress } = req.body;
   try {
     const updateData = {};
-    if (teamName !== undefined) updateData.teamName = teamName;
-    if (workerName !== undefined) updateData.workerName = workerName;
-    if (gender !== undefined) updateData.gender = gender;
-    if (teamStrength !== undefined) updateData.teamStrength = parseInt(teamStrength, 10) || 1;
-    if (govtId !== undefined) updateData.govtId = govtId;
-    if (mobile !== undefined) updateData.mobile = mobile;
-    if (officeAddress !== undefined) updateData.officeAddress = officeAddress;
-
-    // Backward compatibility for existing checks on "name"
-    if (teamName !== undefined) updateData.name = teamName;
+    if (req.body.teams !== undefined) {
+      updateData.teams = req.body.teams;
+    } else {
+      // Legacy fallback
+      const { teamName, workerName, gender, teamStrength, govtId, mobile, officeAddress } = req.body;
+      if (teamName !== undefined) updateData.teamName = teamName;
+      if (workerName !== undefined) updateData.workerName = workerName;
+      if (gender !== undefined) updateData.gender = gender;
+      if (teamStrength !== undefined) updateData.teamStrength = parseInt(teamStrength, 10) || 1;
+      if (govtId !== undefined) updateData.govtId = govtId;
+      if (mobile !== undefined) updateData.mobile = mobile;
+      if (officeAddress !== undefined) updateData.officeAddress = officeAddress;
+      if (teamName !== undefined) updateData.name = teamName;
+    }
 
     await adminDb.collection(USERS_COLLECTION).doc(req.user.uid).update(updateData);
     res.json({ success: true, profile: updateData });

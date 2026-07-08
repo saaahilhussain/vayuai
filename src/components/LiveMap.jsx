@@ -107,6 +107,7 @@ const HeatmapLayer = ({ events, heatmapActive }) => {
   return null;
 };
 
+
 const CustomInfoWindow = ({ event, onClose }) => {
   const [isTranslated, setIsTranslated] = useState(false);
   if (!event) return null;
