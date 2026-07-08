@@ -75,7 +75,7 @@ export async function updateEventStatus(req, res) {
   const { id } = req.params;
   const { status } = req.body;
 
-  const validStatuses = ["open", "in_progress", "resolved", "spam"];
+  const validStatuses = ["open", "in_progress", "resolved", "spam", "assigned", "rework", "worker_en_route", "reached", "cleanup_done"];
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(", ")}` });
   }

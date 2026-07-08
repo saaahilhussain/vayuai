@@ -214,7 +214,7 @@ export async function processTweetDetailed(tweet) {
       severity,
       severityLevel,
       locations: nlp.locations.length > 0 ? nlp.locations : [geo.matchedName],
-      locationName: geo.matchedName || nlp.locations[0],
+      locationName: tweet.hintLocations?.[0] || geo.matchedName || nlp.locations[0],
       state: geo.state,
       lat: eventLat,
       lng: eventLng,
@@ -292,6 +292,13 @@ export async function postTweet(req, res) {
       tweet,
     });
   }
+
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let reportId = '';
+  for (let i = 0; i < 10; i++) {
+    reportId += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  event.reportId = reportId;
 
   const storedEvent = store.add(event);
   sensorGrid.registerReport(storedEvent.lat, storedEvent.lng, storedEvent.severityLevel || 1);

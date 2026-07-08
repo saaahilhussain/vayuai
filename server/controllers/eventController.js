@@ -1,24 +1,32 @@
 import { store, sseClients } from "../services/shared.js";
 import { LOCATIONS } from "../services/geocoder.js";
 
+function stripPrivate(events) {
+  return events.map(e => {
+    const pub = { ...e };
+    delete pub.reportId;
+    return pub;
+  });
+}
+
 export function getEvents(req, res) {
   const { start, end } = req.query;
   if (start && end) {
-    res.json(store.getByTimeRange(Number(start), Number(end)));
+    res.json(stripPrivate(store.getByTimeRange(Number(start), Number(end))));
   } else {
-    res.json(store.getAll());
+    res.json(stripPrivate(store.getAll()));
   }
 }
 
 export function getRecentEvents(req, res) {
   const count = parseInt(req.query.count) || 50;
-  res.json(store.getRecent(count));
+  res.json(stripPrivate(store.getRecent(count)));
 }
 
 export function getFilteredEvents(req, res) {
   const minRelevancy = parseFloat(req.query.minRelevancy) || 0.4;
   const events = store.getAll().filter((e) => (e.relevancyScore || 0) >= minRelevancy);
-  res.json(events);
+  res.json(stripPrivate(events));
 }
 
 export function getHeatmap(req, res) {

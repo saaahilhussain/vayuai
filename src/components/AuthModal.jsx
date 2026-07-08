@@ -53,7 +53,15 @@ export default function AuthModal({ onClose, forceOpen = false }) {
       }
       onClose();
     } catch (err) {
-      setError(err.message);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        setError("user does not exists");
+      } else if (err.code === 'auth/wrong-password') {
+        setError("wrong password , try again");
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError("user already exists");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -69,7 +77,15 @@ export default function AuthModal({ onClose, forceOpen = false }) {
       await createRoleInFirestore(userCred.user, selectedRole);
       onClose();
     } catch (err) {
-      setError(err.message);
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        setError("user does not exists");
+      } else if (err.code === 'auth/wrong-password') {
+        setError("wrong password , try again");
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError("user already exists");
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -223,7 +239,7 @@ export default function AuthModal({ onClose, forceOpen = false }) {
 
         {/* Switch */}
         <p className="auth-switch">
-          {isLogin ? "Don't have an account? " : "Already have an account? "}
+          {isLogin ? "Don't have an account? " : "Already a user? "}
           <span
             onClick={() => {
               setIsLogin(!isLogin);
@@ -231,7 +247,7 @@ export default function AuthModal({ onClose, forceOpen = false }) {
             }}
             className="auth-link"
           >
-            {isLogin ? "Sign Up" : "Sign In"}
+            {isLogin ? "Sign Up" : "login here."}
           </span>
         </p>
       </div>

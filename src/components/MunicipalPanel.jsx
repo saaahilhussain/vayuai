@@ -430,7 +430,7 @@ export default function MunicipalPanel({
               <option value="">All Statuses</option>
               <option value="open">🔴 Open</option>
               <option value="in_progress">🟡 In Progress</option>
-              <option value="cleanup_done">🤖 Pending AI Verification</option>
+              <option value="cleanup_done">⏳ Pending Verification</option>
               <option value="resolved">🟢 Resolved</option>
               <option value="spam">🚩 Reported (Spam)</option>
             </select>
@@ -479,6 +479,11 @@ export default function MunicipalPanel({
                   <div className="mp-event-type">
                     <span>{pollCfg.icon}</span>
                     <span className="mp-event-type-label">{pollCfg.label}</span>
+                    {event.reportId && (
+                      <span style={{ fontSize: "12px", color: "#94a3b8", marginLeft: "8px", fontFamily: "monospace" }}>
+                        ID: {event.reportId}
+                      </span>
+                    )}
                   </div>
                   <div className="mp-event-meta-summary">
                     <span
@@ -514,13 +519,37 @@ export default function MunicipalPanel({
                       </div>
                     </div>
 
-                    {event.imageUrl && (
-                      <img
-                        src={event.imageUrl}
-                        alt="Report"
-                        className="mp-event-image"
-                      />
-                    )}
+                      {event.imageUrl && (
+                        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '8px' }}>
+                          <img
+                            src={event.imageUrl}
+                            alt="Report"
+                            className="mp-event-image"
+                            style={{ flex: '0 0 auto', maxWidth: '200px' }}
+                          />
+                          {event.resolutionProofUrl && (
+                            <div style={{ flex: '0 0 auto', border: '2px solid #22c55e', borderRadius: '6px', position: 'relative' }}>
+                              <span style={{ position: 'absolute', top: '4px', left: '4px', background: 'rgba(34,197,94,0.9)', color: 'white', fontSize: '10px', padding: '2px 4px', borderRadius: '4px' }}>Resolution Proof</span>
+                              <img
+                                src={event.resolutionProofUrl}
+                                alt="Resolution Proof"
+                                className="mp-event-image"
+                                style={{ maxWidth: '200px', margin: 0 }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {!event.imageUrl && event.resolutionProofUrl && (
+                         <div style={{ border: '2px solid #22c55e', borderRadius: '6px', position: 'relative', marginBottom: '8px', display: 'inline-block' }}>
+                            <span style={{ position: 'absolute', top: '4px', left: '4px', background: 'rgba(34,197,94,0.9)', color: 'white', fontSize: '10px', padding: '2px 4px', borderRadius: '4px' }}>Resolution Proof</span>
+                            <img
+                              src={event.resolutionProofUrl}
+                              alt="Resolution Proof"
+                              className="mp-event-image"
+                            />
+                         </div>
+                      )}
 
                     {event.text && (
                       <div className="mp-event-text full-text">
@@ -612,14 +641,14 @@ export default function MunicipalPanel({
                                 : "No AI Score"
                             }
                           >
-                            ✅ Finalize (AI Confirmed)
+                            ✅ Approve
                           </button>
                           <button
                             className="mp-btn mp-btn-secondary mp-btn-sm"
                             disabled={isActing}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleStatusChange(event.id, "assigned");
+                              handleStatusChange(event.id, "rework");
                             }}
                           >
                             ↩ Reject & Reassign

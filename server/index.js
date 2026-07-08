@@ -17,7 +17,8 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser(process.env.COOKIE_SECRET || "default_secret"));
-app.use(express.json({ limit: "8mb" }));
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Mount API routes
 app.use("/api", apiRoutes);

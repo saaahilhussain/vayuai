@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { POLLUTION_TYPES, timeAgo, fetchWorkerAssignments, updateWorkerEventStatus, verifyWorkerEvent, fetchHotspots, fetchWorkerProfile, updateWorkerProfile, fetchEvents } from "../utils/api";
 import { APIProvider, Map, AdvancedMarker, Pin } from "@vis.gl/react-google-maps";
 import LiveFeed from "./LiveFeed";
+import SubmitProofModal from "./SubmitProofModal";
 
 const STATUS_CONFIG = {
   assigned: { label: "Assigned", color: "#8b5cf6", icon: "👥" },
@@ -42,6 +43,7 @@ export default function WorkerPanel({
   const [editStrength, setEditStrength] = useState("");
   const [editGovtId, setEditGovtId] = useState("");
   const [editMobile, setEditMobile] = useState("");
+  const [activeProofEventId, setActiveProofEventId] = useState(null);
   const [editOfficeAddress, setEditOfficeAddress] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -166,33 +168,30 @@ export default function WorkerPanel({
     }
   };
 
-  const handleVerifyResolution = async (eventId, file) => {
+  const handleProofSubmit = async (imageDataUrl, note) => {
+    const eventId = activeProofEventId;
+    if (!eventId) return;
+    setActiveProofEventId(null);
     setActionLoading(eventId);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        try {
-          await verifyWorkerEvent(currentUser, eventId, reader.result, "Resolved by worker");
-          await loadAssignments();
-        } catch (err) {
-          alert(`Verification failed: ${err.message}`);
-          setActionLoading(null);
-        }
-      };
-      reader.readAsDataURL(file);
+      await verifyWorkerEvent(currentUser, eventId, imageDataUrl, note || "Resolved by worker");
+      await loadAssignments();
     } catch (err) {
-      alert(`Failed: ${err.message}`);
+      alert(`Verification failed: ${err.message}`);
+    } finally {
       setActionLoading(null);
     }
   };
 
   const filteredEvents = events.filter((e) => {
-    if (filter === "active") return e.status !== "resolved";
+    if (filter === "active") return !["resolved", "cleanup_done"].includes(e.status);
+    if (filter === "pending") return e.status === "cleanup_done";
     if (filter === "resolved") return e.status === "resolved";
     return true;
   });
 
-  const activeCount = events.filter((e) => e.status !== "resolved").length;
+  const activeCount = events.filter((e) => !["resolved", "cleanup_done"].includes(e.status)).length;
+  const pendingCount = events.filter((e) => e.status === "cleanup_done").length;
   const resolvedCount = events.filter((e) => e.status === "resolved").length;
 
   // --- Render Tabs ---
@@ -260,6 +259,11 @@ export default function WorkerPanel({
   const renderTasksTab = () => {
     return (
       <div className="mdl-tab-content">
+        <SubmitProofModal 
+          isOpen={!!activeProofEventId} 
+          onClose={() => setActiveProofEventId(null)}
+          onSubmit={handleProofSubmit}
+        />
         <div className="mdl-page-header">
           <h2 className="mdl-page-title">My Assignments</h2>
           <div className="mp-filters">
@@ -268,8 +272,9 @@ export default function WorkerPanel({
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             >
-              <option value="active">🔴 Active ({activeCount})</option>
-              <option value="resolved">🟢 Resolved ({resolvedCount})</option>
+              <option value="active">🔥 Active ({activeCount})</option>
+              <option value="pending">⏳ Pending Review ({pendingCount})</option>
+              <option value="resolved">✅ Resolved ({resolvedCount})</option>
               <option value="all">All ({events.length})</option>
             </select>
             <button
@@ -340,6 +345,9 @@ export default function WorkerPanel({
 
                     {/* Details */}
                     <div style={{ paddingLeft: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <div style={{ fontSize: "11px", color: "#94a3b8", fontFamily: "monospace", letterSpacing: "1px" }}>
+                        ID: {event.reportId || "PENDING"}
+                      </div>
                       <div style={{ fontSize: "12px", color: "#4ade80", fontWeight: 600 }}>
                         📍 {event.locationName || "Unknown"}
                       </div>
@@ -358,57 +366,36 @@ export default function WorkerPanel({
 
                     {/* Actions */}
                     <div className="mp-actions" style={{ flexDirection: 'column', gap: '8px', padding: '0 8px' }}>
-                      {event.status === "assigned" && (
-                        <button
-                          className="mp-btn mp-btn-primary"
-                          disabled={isActing}
-                          onClick={() => handleStatusChange(event.id, "worker_en_route")}
-                          style={{ width: "100%" }}
-                        >
-                          🚚 Start Journey
-                        </button>
+                      {event.status === "rework" && (
+                        <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', padding: '8px', borderRadius: '4px', fontSize: '12px', fontWeight: 600, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                          ⚠️ Rejected by Municipality - Rework Required
+                        </div>
                       )}
-                      {event.status === "worker_en_route" && (
+                      {(event.status === "assigned" || event.status === "in_progress" || event.status === "rework") && (
                         <button
-                          className="mp-btn mp-btn-primary"
+                          className="mp-btn mp-btn-resolve"
                           disabled={isActing}
-                          onClick={() => handleStatusChange(event.id, "reached")}
-                          style={{ width: "100%" }}
+                          onClick={() => setActiveProofEventId(event.id)}
+                          style={{ textAlign: 'center', display: 'block', width: '100%' }}
                         >
-                          📍 Reached Location
+                          📷 Submit Proof (Upload/Camera)
                         </button>
-                      )}
-                      {event.status === "reached" && (
-                        <label className="mp-btn mp-btn-resolve" style={{ cursor: isActing ? 'not-allowed' : 'pointer', textAlign: 'center', display: 'block', width: '100%' }}>
-                          📸 Upload Completion Photo (AI Verification)
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            style={{ display: 'none' }}
-                            disabled={isActing}
-                            onChange={(e) => {
-                              if (e.target.files?.[0]) handleVerifyResolution(event.id, e.target.files[0]);
-                            }}
-                          />
-                        </label>
                       )}
                       {event.status === "cleanup_done" && (
-                        <span style={{ color: '#0ea5e9', fontSize: '12px', fontWeight: 600 }}>🤖 Pending Final Review by Municipality</span>
+                        <span style={{ color: '#0ea5e9', fontSize: '12px', fontWeight: 600 }}>⏳ Pending Final Review by Municipality</span>
                       )}
                       {event.status === "resolved" && (
                         <span style={{ color: '#22c55e', fontSize: '12px', fontWeight: 600 }}>✅ Verified & Resolved</span>
                       )}
 
                       {event.lat && event.lng && (
-                         <a 
-                            href={`https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`} 
-                            target="_blank" 
-                            rel="noreferrer"
+                         <button 
+                            onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${event.lat},${event.lng}`, '_blank', 'noopener,noreferrer')}
                             className="mp-btn mp-btn-secondary"
-                            style={{ textAlign: 'center', textDecoration: 'none', display: 'block', width: '100%' }}
+                            style={{ textAlign: 'center', display: 'block', width: '100%' }}
                           >
                             🗺️ Navigate
-                         </a>
+                         </button>
                       )}
                     </div>
 
@@ -466,12 +453,12 @@ export default function WorkerPanel({
           </Map>
         </APIProvider>
         <div style={{ padding: '0.5rem', textAlign: 'center', fontSize: '0.8rem', color: '#9ca3af' }}>
-          <span style={{ color: '#ef4444' }}>🔴 Hotspots</span> | <span style={{ color: '#3b82f6' }}>🔵 My Tasks</span>
+          <span style={{ color: '#ef4444' }}>🔥 Hotspots</span> | <span style={{ color: '#3b82f6' }}>📋 My Tasks</span>
         </div>
       </div>
-    </div>
-  );
-};
+      </div>
+    );
+  };
 
   const renderProfileTab = () => (
     <div className="mdl-tab-content">

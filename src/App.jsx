@@ -167,7 +167,6 @@ export default function App() {
   };
 
   const handleRefreshFeed = async () => {
-    if (!currentUser) return;
     try {
       const data = await fetchEvents();
       setEvents(data);
@@ -480,7 +479,7 @@ export default function App() {
 
       {/* Citizen Panel */}
       {citizenActive && (
-        <CitizenPanel onClose={() => setCitizenActive(false)} globalEvents={events} />
+        <CitizenPanel onClose={() => setCitizenActive(false)} globalEvents={events} onRefresh={handleRefreshFeed} />
       )}
 
       {/* Top right Feed Toggle Button when Map is Open */}

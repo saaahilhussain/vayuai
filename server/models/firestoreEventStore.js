@@ -373,6 +373,24 @@ class FirestoreEventStore {
     return event;
   }
 
+  async updateEvent(eventId, updatedFields) {
+    const event = this.getById(eventId);
+    if (!event) return null;
+
+    Object.assign(event, updatedFields);
+    event.lastUpdatedAt = new Date().toISOString();
+
+    if (event.firestoreId) {
+      const dbPayload = { ...updatedFields, lastUpdatedAt: event.lastUpdatedAt };
+      // Filter out undefined fields to avoid Firestore errors
+      Object.keys(dbPayload).forEach(key => dbPayload[key] === undefined && delete dbPayload[key]);
+      
+      await adminDb.collection(COLLECTION).doc(event.firestoreId).update(dbPayload);
+    }
+
+    return event;
+  }
+
   async assignWorker(eventId, workerUid, teamId) {
     const event = this.getById(eventId);
     if (!event) return null;

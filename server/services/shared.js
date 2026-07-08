@@ -6,9 +6,12 @@ export const sensorGrid = new SensorGrid();
 export const sseClients = [];
 
 export function broadcastEvent(event) {
+  const publicEvent = { ...event };
+  delete publicEvent.reportId;
+  
   sseClients.forEach((client) => {
     try {
-      client.write(`data: ${JSON.stringify(event)}\n\n`);
+      client.write(`data: ${JSON.stringify(publicEvent)}\n\n`);
     } catch {
       // client disconnected, will be cleaned up on 'close'
     }

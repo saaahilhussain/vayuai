@@ -917,8 +917,7 @@ function AddTweetModalContent({
               onChange={(e) => setReportDate(e.target.value)}
               placeholder="DD/MM/YYYY"
               disabled={status === "loading"}
-              min="2026-01-01"
-              max="9999-12-31"
+              max={new Date().toISOString().split("T")[0]}
               required
             />
           </div>

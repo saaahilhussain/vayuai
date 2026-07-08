@@ -28,3 +28,4 @@ dist-ssr
 # Security
 *serviceAccountKey*.json
 server/.env
+
