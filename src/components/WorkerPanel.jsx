@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import "./WorkerPanel.css";
 import { useAuth } from "../context/AuthContext";
-import { POLLUTION_TYPES, timeAgo, fetchWorkerAssignments, updateWorkerEventStatus, verifyWorkerEvent, fetchHotspots, fetchWorkerProfile, updateWorkerProfile } from "../utils/api";
+import { POLLUTION_TYPES, timeAgo, fetchWorkerAssignments, updateWorkerEventStatus, verifyWorkerEvent, fetchHotspots, fetchWorkerProfile, updateWorkerProfile, fetchEvents } from "../utils/api";
 import { APIProvider, Map, AdvancedMarker, Pin } from "@vis.gl/react-google-maps";
+import LiveFeed from "./LiveFeed";
 
 const STATUS_CONFIG = {
   assigned: { label: "Assigned", color: "#8b5cf6", icon: "👥" },
@@ -44,6 +45,22 @@ export default function WorkerPanel({
   const [editOfficeAddress, setEditOfficeAddress] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [globalEvents, setGlobalEvents] = useState([]);
+
+  const loadGlobalFeed = useCallback(async () => {
+    try {
+      const data = await fetchEvents();
+      setGlobalEvents(data);
+    } catch (err) {
+      console.error("Failed to load global feed:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "feed") {
+      loadGlobalFeed();
+    }
+  }, [activeTab, loadGlobalFeed]);
 
   const loadAssignments = useCallback(async () => {
     if (!currentUser) return;
@@ -654,6 +671,13 @@ export default function WorkerPanel({
 
           <nav className="mdl-nav">
             <button
+              className={`mdl-nav-item ${activeTab === "feed" ? "active" : ""}`}
+              onClick={() => setActiveTab("feed")}
+            >
+              <span className="mdl-nav-icon">📡</span>
+              Live Feed
+            </button>
+            <button
               className={`mdl-nav-item ${activeTab === "dashboard" ? "active" : ""}`}
               onClick={() => setActiveTab("dashboard")}
             >
@@ -748,6 +772,15 @@ export default function WorkerPanel({
           {activeTab === "tasks" && renderTasksTab()}
           {activeTab === "profile" && renderProfileTab()}
           {activeTab === "local_map" && renderMapTab()}
+          {activeTab === "feed" && (
+            <LiveFeed
+              events={globalEvents}
+              onClose={() => setActiveTab("tasks")}
+              isSidebar={false}
+              isEmbedded={true}
+              onRefresh={loadGlobalFeed}
+            />
+          )}
         </div>
       </div>
     );

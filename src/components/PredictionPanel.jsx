@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import "./PredictionPanel.css";
 
 function MiniSparkline({ data, maxAqi }) {
@@ -37,12 +38,29 @@ function MiniSparkline({ data, maxAqi }) {
   );
 }
 
-export default function PredictionPanel({ predictionData, onClose, onSelectLocation }) {
+export default function PredictionPanel({ predictionData, onClose, onSelectLocation, onTakeAction }) {
+  const [severityFilter, setSeverityFilter] = useState("");
+  const [wardFilter, setWardFilter] = useState("");
+
   if (!predictionData || !predictionData.locations) {
     return null;
   }
 
   const { summary, locations } = predictionData;
+  const uniqueWards = Array.from(new Set(locations.map(loc => loc.name).filter(Boolean)));
+
+  const getLocationRisk = (loc) => {
+    if (loc.peakAQI >= 300) return 'critical';
+    if (loc.peakAQI >= 200) return 'high';
+    if (loc.peakAQI >= 100) return 'moderate';
+    return 'low';
+  };
+
+  const filteredLocations = locations.filter(loc => {
+    if (severityFilter && getLocationRisk(loc) !== severityFilter) return false;
+    if (wardFilter && loc.name !== wardFilter) return false;
+    return true;
+  });
 
   const getRiskClass = (risk) => {
     switch(risk?.toLowerCase()) {
@@ -60,7 +78,37 @@ export default function PredictionPanel({ predictionData, onClose, onSelectLocat
           <h3>24h AQI Forecast</h3>
           <span className="pp-badge">AI Powered</span>
         </div>
-        <button className="pp-close-btn" onClick={onClose}>×</button>
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div className="mp-ward-search" style={{ position: 'relative' }}>
+            <input
+              type="text"
+              list="forecast-ward-options"
+              placeholder="Search Ward..."
+              className="mp-select mp-status-filter"
+              value={wardFilter}
+              onChange={(e) => setWardFilter(e.target.value)}
+              style={{ width: '150px' }}
+            />
+            <datalist id="forecast-ward-options">
+              {uniqueWards.map(ward => (
+                <option key={ward} value={ward} />
+              ))}
+            </datalist>
+          </div>
+          <select 
+            value={severityFilter} 
+            onChange={(e) => setSeverityFilter(e.target.value)}
+            className="mp-select mp-status-filter"
+            style={{ width: '150px' }}
+          >
+            <option value="">All Severities</option>
+            <option value="critical">🔴 Critical</option>
+            <option value="high">🟠 High</option>
+            <option value="moderate">🟡 Moderate</option>
+            <option value="low">🟢 Low</option>
+          </select>
+          <button className="pp-close-btn" onClick={onClose}>×</button>
+        </div>
       </div>
 
       <div className="pp-summary">
@@ -92,14 +140,13 @@ export default function PredictionPanel({ predictionData, onClose, onSelectLocat
       </div>
 
       <div className="pp-list">
-        {locations.map((loc) => {
+        {filteredLocations.map((loc) => {
           const maxScaleAqi = Math.max(300, loc.peakAQI * 1.1);
           
           return (
             <div 
               key={loc.id} 
               className="pp-card"
-              onClick={() => onSelectLocation && onSelectLocation(loc)}
               style={{ borderLeft: `4px solid ${loc.hourlyForecast.find(h => h.predictedAQI === loc.peakAQI)?.color || '#999'}` }}
             >
               <div className="pp-card-header">
@@ -144,6 +191,28 @@ export default function PredictionPanel({ predictionData, onClose, onSelectLocat
                   <div className="pp-conf-fill" style={{ width: `${loc.confidence}%` }}></div>
                 </div>
                 <span>{loc.confidence}%</span>
+              </div>
+              <div style={{ marginTop: '12px', display: 'flex', gap: '8px' }}>
+                <button 
+                  className="mp-btn mp-btn-secondary" 
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    if (onSelectLocation) onSelectLocation(loc); 
+                  }}
+                  style={{ flex: 1, justifyContent: 'center' }}
+                >
+                  Navigate
+                </button>
+                <button 
+                  className="mp-btn mp-btn-primary" 
+                  onClick={(e) => { 
+                    e.stopPropagation(); 
+                    if (onTakeAction) onTakeAction(loc.name); 
+                  }}
+                  style={{ flex: 1, justifyContent: 'center' }}
+                >
+                  Take Action
+                </button>
               </div>
             </div>
           );
