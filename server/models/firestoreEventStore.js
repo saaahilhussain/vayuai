@@ -491,14 +491,21 @@ class FirestoreEventStore {
   }
 
   async getByIdAsync(eventId) {
-    let event = this.events.find((e) => e.id === eventId);
+    let event = this.events.find((e) => e.id === eventId || e.firestoreId === eventId);
     if (event) return event;
     
     // Fallback to Firestore if not in memory cache
     try {
-      const snapshot = await adminDb.collection(COLLECTION).where("id", "==", eventId).limit(1).get();
+      // First try matching by our custom 'id' field
+      let snapshot = await adminDb.collection(COLLECTION).where("id", "==", eventId).limit(1).get();
       if (!snapshot.empty) {
         return { firestoreId: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+      }
+      
+      // Fallback: try fetching by Firestore document ID
+      const docRef = await adminDb.collection(COLLECTION).doc(eventId).get();
+      if (docRef.exists) {
+        return { firestoreId: docRef.id, ...docRef.data() };
       }
     } catch (err) {
       console.error("Error fetching event by ID from Firestore:", err.message);
@@ -508,19 +515,22 @@ class FirestoreEventStore {
 
   async deleteEvent(eventId) {
     // 1. Remove from memory cache if it exists
-    const idx = this.events.findIndex((e) => e.id === eventId);
+    const idx = this.events.findIndex((e) => e.id === eventId || e.firestoreId === eventId);
     if (idx !== -1) {
       this.events.splice(idx, 1);
     }
 
     // 2. Delete from Firestore
     try {
-      const snapshot = await adminDb.collection(COLLECTION).where("id", "==", eventId).limit(1).get();
+      let snapshot = await adminDb.collection(COLLECTION).where("id", "==", eventId).limit(1).get();
       if (!snapshot.empty) {
         await adminDb.collection(COLLECTION).doc(snapshot.docs[0].id).delete();
         return true;
       }
-      return idx !== -1;
+      
+      // Fallback: try deleting by Firestore document ID
+      await adminDb.collection(COLLECTION).doc(eventId).delete();
+      return true;
     } catch (err) {
       console.error("Firestore delete failed:", err.message);
       return false;

@@ -46,9 +46,16 @@ export function addFeedback(req, res) {
 export async function deleteCitizenEvent(req, res) {
   const { id } = req.params;
   const event = await store.getByIdAsync(id);
-  if (!event) return res.status(404).json({ error: "Event not found" });
+  
+  if (!event) {
+    console.error(`Delete failed: Event ${id} not found in store.`);
+    return res.status(404).json({ error: "Event not found" });
+  }
 
-  if (event.citizenUid !== req.user.uid) {
+  const isOwner = event.citizenUid === req.user.uid;
+  const isCorroborator = event.corroboratingCitizenUids && event.corroboratingCitizenUids.includes(req.user.uid);
+
+  if (!isOwner && !isCorroborator) {
     return res.status(403).json({ error: "Not authorized to delete this event" });
   }
 
@@ -56,6 +63,6 @@ export async function deleteCitizenEvent(req, res) {
   if (success) {
     res.json({ success: true });
   } else {
-    res.status(500).json({ error: "Failed to delete event" });
+    res.status(500).json({ error: "Failed to delete event from database" });
   }
 }
