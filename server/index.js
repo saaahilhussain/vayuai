@@ -30,6 +30,14 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 // Mount API routes
 app.use("/api", apiRoutes);
 
+// Health check for Render
+app.get("/", (req, res) => {
+  res.status(200).send("VayuAI Backend is running!");
+});
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
 // --- Serve static files (production) ---
 const distPath = path.join(__dirname, "..", "dist");
 app.use(express.static(distPath));
