@@ -1,6 +1,6 @@
 // API helpers + constants
 
-const API_BASE = import.meta.env.DEV ? 'http://localhost:3001/api' : 'https://vayuai-backend.onrender.com/api';
+const API_BASE = import.meta.env.DEV ? 'http://localhost:3001/api' : (import.meta.env.VITE_API_BASE || 'https://vayuai-backend.onrender.com/api');
 
 export async function fetchEvents() {
   const res = await fetch(`${API_BASE}/events`);
