@@ -22,7 +22,7 @@ const corsOptions = {
   credentials: true
 };
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+app.options('/*splat', cors(corsOptions));
 app.use(cookieParser(process.env.COOKIE_SECRET || "default_secret"));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
