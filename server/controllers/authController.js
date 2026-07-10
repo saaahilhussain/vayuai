@@ -21,9 +21,9 @@ export async function createSessionCookie(req, res) {
     const options = {
       maxAge: expiresIn,
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: true,
       signed: true,
-      sameSite: "strict"
+      sameSite: "none"
     };
 
     // Use the role to namespace the cookie: "session_citizen", "session_municipality", etc.
